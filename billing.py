@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import os
 
 import pandas as pd
 
@@ -104,10 +105,11 @@ class QuarterlyPowerUsersRecord:
             start datetime, last name, and associated price in CAD, in that
             order.
         """
-        return list(self.pi_power_user_df.loc[
+        return sorted(list(self.pi_power_user_df.loc[
             :,
             ["timestamp", "last_name", "fixed", "price"]].itertuples(
-                index=False))
+                index=False)),
+            key=lambda x: x[0])
 
 
 class QuarterlyBill:
@@ -316,6 +318,7 @@ def assemble_bill(pi_df, user_df, pi_lastname, quarter_end):
     pi_users = user_df.loc[user_df["pi_last_name"] == pi_lastname, :]
     pi_users = pi_users.loc[pi_users["timestamp"] < quarter_end, :]
     pi_power_users = pi_users.loc[pi_users["power_user"], :]
+    pi_power_users = pi_power_users.sort_values(by="timestamp")
     pi_power_users.index = range(len(pi_power_users))
     pi_power_users = pi_power_users.assign(
         fixed=pi_power_users.index.map(user_price_by_index),
@@ -355,7 +358,63 @@ def user_price_by_index(index):
     return ADDITIONAL_POWERUSER_PRICE
 
 
-def main(pi_path, user_path, pi_last_name, quarter_end_iso, out_file=None):
+def preprocess_forms(pi_path, user_path):
+    """Load Google Forms data and rearrange it.
+
+    Specifically, this loads both relevant sheets and adds PI accounts to the
+    users table.
+
+    Parameters
+    ----------
+    pi_path : str
+        Path to the PI form data
+    user_path : str
+        Path to the user form data
+
+    Returns
+    -------
+    tuple of DataFrame
+        A tuple containing the resulting PI data frame then the user data
+        frame.
+    """
+    pi_df = load_pi_df(pi_path)
+    user_df = load_user_df(user_path)
+    user_df = add_pis_to_user_df(pi_df, user_df)
+
+    return (pi_df, user_df)
+
+
+def generate_all_pi_bills(pi_path, user_path, quarter_end_iso, out_dir):
+    """Loop through all PIs and save a bill for each.
+
+    Parameters
+    ----------
+    pi_path : str
+        Path to the PI form data.
+    user_path : str
+        Path to the user form data.
+    quarter_end_iso : str
+        ISO formatted end date of the billing quarter.
+    out_dir : str, optional
+        Directory into which to output bill text files.
+    """
+    pi_df, user_df = preprocess_forms(pi_path, user_path)
+    quarter_end = datetime.datetime.fromisoformat(quarter_end_iso)
+
+    for pi_last_name in pi_df.loc[:, "last_name"]:
+        out_file = os.path.join(out_dir, "pi-{}_quarter-{}_bill.txt".format(
+            pi_last_name,
+            quarter_end_iso))
+        pi_bill = assemble_bill(pi_df, user_df, pi_last_name, quarter_end)
+
+        pi_bill.save_bill_txt(out_file)
+
+
+def generate_pi_bill(pi_path,
+                     user_path,
+                     pi_last_name,
+                     quarter_end_iso,
+                     out_file=None):
     """Open data files and produce a report for one PI.
 
     Parameters
@@ -371,9 +430,7 @@ def main(pi_path, user_path, pi_last_name, quarter_end_iso, out_file=None):
     out_file : str, optional
         Path to output text file.
     """
-    pi_df = load_pi_df(pi_path)
-    user_df = load_user_df(user_path)
-    user_df = add_pis_to_user_df(pi_df, user_df)
+    pi_df, user_df = preprocess_forms(pi_path, user_path)
 
     quarter_end = datetime.datetime.fromisoformat(quarter_end_iso)
 
@@ -393,19 +450,16 @@ if __name__ == "__main__":
     parser.add_argument("user_form",
                         type=str,
                         help="path to the user form data")
-    parser.add_argument("pi_last_name",
-                        type=str,
-                        help="last name of the PI to bill")
     parser.add_argument("quarter_end",
                         type=str,
                         help="last day of the quarter to bill")
-    parser.add_argument("--out_file",
+    parser.add_argument("out_dir",
                         type=str,
-                        help="path to output bill file")
+                        help="directory into which to output bill files")
 
     args = parser.parse_args()
-    main(args.pi_form,
-         args.user_form,
-         args.pi_last_name,
-         args.quarter_end,
-         args.out_file)
+    generate_all_pi_bills(
+        args.pi_form,
+        args.user_form,
+        args.quarter_end,
+        args.out_dir)
