@@ -1,5 +1,8 @@
 """Utilities to calculate CBS Server billing"""
 
+import argparse
+import datetime
+
 import pandas as pd
 
 # Storage price in dollars/TB/year
@@ -350,3 +353,59 @@ def user_price_by_index(index):
     if index <= 0:
         return FIRST_POWERUSER_PRICE
     return ADDITIONAL_POWERUSER_PRICE
+
+
+def main(pi_path, user_path, pi_last_name, quarter_end_iso, out_file=None):
+    """Open data files and produce a report for one PI.
+
+    Parameters
+    ----------
+    pi_path : str
+        Path to the PI form data.
+    user_path : str
+        Path to the user form data.
+    pi_last_name : str
+        Last name of the PI to bill.
+    quarter_end_iso : str
+        ISO formatted end date of the billing quarter.
+    out_file : str, optional
+        Path to output text file.
+    """
+    pi_df = load_pi_df(pi_path)
+    user_df = load_user_df(user_path)
+    user_df = add_pis_to_user_df(pi_df, user_df)
+
+    quarter_end = datetime.datetime.fromisoformat(quarter_end_iso)
+
+    pi_bill = assemble_bill(pi_df, user_df, pi_last_name, quarter_end)
+
+    if out_file is not None:
+        pi_bill.save_bill_txt(out_file)
+        return
+
+    print(pi_bill.generate_bill_txt())
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Process CBS Server billing data.")
+    parser.add_argument("pi_form", type=str, help="path to the PI form data")
+    parser.add_argument("user_form",
+                        type=str,
+                        help="path to the user form data")
+    parser.add_argument("pi_last_name",
+                        type=str,
+                        help="last name of the PI to bill")
+    parser.add_argument("quarter_end",
+                        type=str,
+                        help="last day of the quarter to bill")
+    parser.add_argument("--out_file",
+                        type=str,
+                        help="path to output bill file")
+
+    args = parser.parse_args()
+    main(args.pi_form,
+         args.user_form,
+         args.pi_last_name,
+         args.quarter_end,
+         args.out_file)
