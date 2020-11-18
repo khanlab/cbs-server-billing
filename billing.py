@@ -103,7 +103,8 @@ class QuarterlyPowerUsersRecord:
         """
         return list(self.pi_power_user_df.loc[
             :,
-            ["timestamp", "last_name", "price"]].itertuples(index=False))
+            ["timestamp", "last_name", "fixed", "price"]].itertuples(
+                index=False))
 
 
 class QuarterlyBill:
@@ -143,33 +144,54 @@ class QuarterlyBill:
             self.quarterly_storage.calculate_storage_price()
             + self.quarterly_power_users.calculate_power_users_price())
 
-    def print_bill(self):
-        """Print a textual summary of the PI's bill to stdout."""
-        print("Billing report for {}".format(self.pi_last_name))
-        print("Storage")
-        print(
+    def generate_bill_txt(self):
+        """Generate a textual summary of the PI's bill.
+
+        Returns
+        -------
+        str
+            Text-formatted billing report.
+        """
+        lines = ([
+            "Billing report for {}".format(self.pi_last_name),
+            "Storage",
             ("Start: {}, Size: {} TB, Annual price per TB: ${:.2f}, "
                 + "Quarterly Price: ${:.2f}").format(
                 self.quarterly_storage.get_storage_start().date(),
                 self.quarterly_storage.get_storage_amount(),
                 STORAGE_PRICE,
-                self.quarterly_storage.calculate_storage_price()))
-        print("Speed code: {}, Subtotal: ${:.2f}".format(
-            self.quarterly_storage.get_speed_code(),
-            self.quarterly_storage.calculate_storage_price()))
-        print("Power Users")
-        for start, last_name, price in (
-                self.quarterly_power_users.enumerate_power_users()):
-            print((
-                "Name: {}, Start: {}, "
+                self.quarterly_storage.calculate_storage_price()),
+            "Speed code: {}, Subtotal: ${:.2f}".format(
+                self.quarterly_storage.get_speed_code(),
+                self.quarterly_storage.calculate_storage_price()),
+            "Power Users"]
+            + [(
+                "Name: {}, Start: {}, Annual price: ${:.2f}, "
                 + "Quarterly price: ${:.2f}").format(
                     last_name,
                     start.date(),
-                    price))
-        print("Speed code: {}, Subtotal: ${:.2f}".format(
-            self.quarterly_storage.get_speed_code(),
-            self.quarterly_power_users.calculate_power_users_price()))
-        print("Total: ${:.2f}".format(self.calculate_total()))
+                    fixed,
+                    price)
+                for start, last_name, fixed, price in (
+                    self.quarterly_power_users.enumerate_power_users())]
+            + [
+                "Speed code: {}, Subtotal: ${:.2f}".format(
+                    self.quarterly_storage.get_speed_code(),
+                    self.quarterly_power_users.calculate_power_users_price()),
+                "Total: ${:.2f}".format(self.calculate_total())])
+        return "\n".join(lines) + "\n"
+
+    def save_bill_txt(self, out_path):
+        """Save a textual summary of the PI's bill.
+
+        Parameters
+        ----------
+        out_path : str
+            Path to the file to be written.
+        """
+        bill_str = self.generate_bill_txt()
+        with open(out_path, "w") as out_file:
+            out_file.write(bill_str)
 
 
 def load_user_df(user_form_path):
