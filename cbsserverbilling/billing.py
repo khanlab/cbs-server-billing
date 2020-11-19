@@ -440,7 +440,7 @@ def generate_pi_bill(pi_path,
         pi_bill.save_bill_txt(out_file)
         return
 
-    print(pi_bill.generate_bill_txt())
+    print(pi_bill.generate_bill_txt(), end="")
 
 
 if __name__ == "__main__":
