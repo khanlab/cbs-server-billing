@@ -36,7 +36,7 @@ class QuarterlyStorageRecord:
         datetime
             Date this PI's storage started.
         """
-        return self.pi_storage_df["timestamp"].iloc[0]
+        return self.pi_storage_df["start_timestamp"].iloc[0]
 
     def get_storage_amount(self):
         """Get the amount of storage allocated to this PI.
@@ -107,7 +107,7 @@ class QuarterlyPowerUsersRecord:
         """
         return sorted(list(self.pi_power_user_df.loc[
             :,
-            ["timestamp", "last_name", "fixed", "price"]].itertuples(
+            ["start_timestamp", "last_name", "fixed", "price"]].itertuples(
                 index=False)),
             key=lambda x: x[0])
 
@@ -216,7 +216,7 @@ def load_user_df(user_form_path):
     user_df = pd.read_excel(user_form_path)
     user_df = user_df.rename(
         columns={
-            "Timestamp": "timestamp",
+            "Timestamp": "start_timestamp",
             "Email Address": "email",
             "First name": "first_name",
             "Last name": "last_name",
@@ -241,7 +241,7 @@ def load_pi_df(pi_form_path):
     pi_df = pd.read_excel(pi_form_path)
     pi_df = pi_df.rename(
         columns={
-            "Timestamp": "timestamp",
+            "Timestamp": "start_timestamp",
             "Email Address": "email",
             "First name": "first_name",
             "Last name": "last_name",
@@ -276,7 +276,12 @@ def add_pis_to_user_df(pi_df, user_df):
     """
     pi_user_df = pi_df.loc[
         :,
-        ["timestamp", "email", "first_name", "last_name", "pi_is_power_user"]]
+        [
+            "start_timestamp",
+            "email",
+            "first_name",
+            "last_name",
+            "pi_is_power_user"]]
     pi_user_df = pi_user_df.assign(pi_last_name=pi_user_df["last_name"])
     pi_user_df = pi_user_df.rename(
         columns={
@@ -284,7 +289,7 @@ def add_pis_to_user_df(pi_df, user_df):
     return pd.concat([user_df, pi_user_df], ignore_index=True)
 
 
-def assemble_bill(pi_df, user_df, pi_lastname, quarter_end):
+def assemble_bill(pi_df, user_df, pi_lastname, quarter_start, quarter_end):
     """Assemble one quarter's billing data for a single PI.
 
     Parameters
@@ -295,6 +300,8 @@ def assemble_bill(pi_df, user_df, pi_lastname, quarter_end):
         User data frame, with PI user accounts included.
     pi_lastname : str
         Last name of the PI to bill.
+    quarter_start : datetime
+        Start date of the quarter for which the bill is being assembled.
     quarter_end : datetime
         End date of the quarter for which the bill is being assembled.
 
@@ -304,8 +311,8 @@ def assemble_bill(pi_df, user_df, pi_lastname, quarter_end):
         Object with all the quarter's billing information for the PI included.
     """
     pi_row = pi_df.loc[pi_df["last_name"] == pi_lastname, :]
-    pi_timestamp = pi_row["timestamp"].iloc[0]
-    if pi_timestamp > quarter_end:
+    pi_start_timestamp = pi_row["start_timestamp"].iloc[0]
+    if pi_start_timestamp > quarter_end:
         print("No PI storage this quarter.")
         return None
     pi_row = pi_row.assign(
@@ -316,13 +323,14 @@ def assemble_bill(pi_df, user_df, pi_lastname, quarter_end):
     storage_record = QuarterlyStorageRecord(pi_row, quarter_end)
 
     pi_users = user_df.loc[user_df["pi_last_name"] == pi_lastname, :]
-    pi_users = pi_users.loc[pi_users["timestamp"] < quarter_end, :]
+    pi_users = pi_users.loc[pi_users["start_timestamp"] < quarter_end, :]
     pi_power_users = pi_users.loc[pi_users["power_user"], :]
-    pi_power_users = pi_power_users.sort_values(by="timestamp")
+    pi_power_users = pi_power_users.sort_values(by="start_timestamp")
     pi_power_users.index = range(len(pi_power_users))
     pi_power_users = pi_power_users.assign(
         fixed=pi_power_users.index.map(user_price_by_index),
-        quarterly=0.25)
+        quarterly=pi_power_users["start_timestamp"].map(
+            lambda ts: 0.25 if ts < quarter_start else 0.0))
     pi_power_users = pi_power_users.assign(
         price=pi_power_users["fixed"] * pi_power_users["quarterly"])
     power_user_record = QuarterlyPowerUsersRecord(
@@ -384,7 +392,11 @@ def preprocess_forms(pi_path, user_path):
     return (pi_df, user_df)
 
 
-def generate_all_pi_bills(pi_path, user_path, quarter_end_iso, out_dir):
+def generate_all_pi_bills(pi_path,
+                          user_path,
+                          quarter_start_iso,
+                          quarter_end_iso,
+                          out_dir):
     """Loop through all PIs and save a bill for each.
 
     Parameters
@@ -393,19 +405,26 @@ def generate_all_pi_bills(pi_path, user_path, quarter_end_iso, out_dir):
         Path to the PI form data.
     user_path : str
         Path to the user form data.
+    quarter_start_iso : str
+        ISO formatted end date of the billing quarter.
     quarter_end_iso : str
         ISO formatted end date of the billing quarter.
     out_dir : str, optional
         Directory into which to output bill text files.
     """
     pi_df, user_df = preprocess_forms(pi_path, user_path)
+    quarter_start = datetime.datetime.fromisoformat(quarter_start_iso)
     quarter_end = datetime.datetime.fromisoformat(quarter_end_iso)
 
     for pi_last_name in pi_df.loc[:, "last_name"]:
         out_file = os.path.join(out_dir, "pi-{}_quarter-{}_bill.txt".format(
             pi_last_name,
             quarter_end_iso))
-        pi_bill = assemble_bill(pi_df, user_df, pi_last_name, quarter_end)
+        pi_bill = assemble_bill(pi_df,
+                                user_df,
+                                pi_last_name,
+                                quarter_start,
+                                quarter_end)
 
         pi_bill.save_bill_txt(out_file)
 
@@ -413,7 +432,7 @@ def generate_all_pi_bills(pi_path, user_path, quarter_end_iso, out_dir):
 def generate_pi_bill(pi_path,
                      user_path,
                      pi_last_name,
-                     quarter_end_iso,
+                     quarter,
                      out_file=None):
     """Open data files and produce a report for one PI.
 
@@ -425,16 +444,22 @@ def generate_pi_bill(pi_path,
         Path to the user form data.
     pi_last_name : str
         Last name of the PI to bill.
-    quarter_end_iso : str
-        ISO formatted end date of the billing quarter.
+    quarter : list of str
+        Two-element list with the ISO formatted start date and end date of
+        the billing quarter.
     out_file : str, optional
         Path to output text file.
     """
     pi_df, user_df = preprocess_forms(pi_path, user_path)
 
-    quarter_end = datetime.datetime.fromisoformat(quarter_end_iso)
+    quarter_start = datetime.datetime.fromisoformat(quarter[0])
+    quarter_end = datetime.datetime.fromisoformat(quarter[1])
 
-    pi_bill = assemble_bill(pi_df, user_df, pi_last_name, quarter_end)
+    pi_bill = assemble_bill(pi_df,
+                            user_df,
+                            pi_last_name,
+                            quarter_start,
+                            quarter_end)
 
     if out_file is not None:
         pi_bill.save_bill_txt(out_file)
@@ -450,6 +475,9 @@ if __name__ == "__main__":
     parser.add_argument("user_form",
                         type=str,
                         help="path to the user form data")
+    parser.add_argument("quarter_start",
+                        type=str,
+                        help="first day of the quarter to bill")
     parser.add_argument("quarter_end",
                         type=str,
                         help="last day of the quarter to bill")
@@ -461,5 +489,6 @@ if __name__ == "__main__":
     generate_all_pi_bills(
         args.pi_form,
         args.user_form,
+        args.quarter_start,
         args.quarter_end,
         args.out_dir)

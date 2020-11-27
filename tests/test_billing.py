@@ -17,7 +17,7 @@ def test_user_price_by_index():
 def test_load_pi_df():
     """Test that `load_pi_df` properly loads the PI form data."""
     pi_df = billing.load_pi_df(MOCK_PI_FORM)
-    for actual, expected in zip(pi_df.columns, ["timestamp",
+    for actual, expected in zip(pi_df.columns, ["start_timestamp",
                                                 "email",
                                                 "first_name",
                                                 "last_name",
@@ -25,34 +25,36 @@ def test_load_pi_df():
                                                 "pi_is_power_user",
                                                 "speed_code"]):
         assert actual == expected
-    assert len(pi_df.index) == 6
+    assert len(pi_df.index) == 7
 
 
 def test_load_user_df():
     """Test that `load_user_df` properly loads the user form data."""
     user_df = billing.load_user_df(MOCK_USER_FORM)
-    for actual, expected in zip(user_df.columns, ["timestamp",
+    for actual, expected in zip(user_df.columns, ["start_timestamp",
                                                   "email",
                                                   "first_name",
                                                   "last_name",
                                                   "pi_last_name",
                                                   "power_user"]):
         assert actual == expected
-    assert len(user_df.index) == 4
+    assert len(user_df.index) == 5
 
 
 def test_preprocess_forms():
     """Test that `preprocess_forms` correctly assembles the data"""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
-    assert len(pi_df.index) == 6
-    assert len(user_df.index) == 10
-    assert user_df.loc[4, "last_name"] == "Apple"
+    assert len(pi_df.index) == 7
+    assert len(user_df.index) == 12
+    assert user_df.loc[5, "last_name"] == "Apple"
 
 
 def test_assemble_bill():
     """Test that `assemble_bill` works properly for all PIs."""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
     pi_lastname = "Apple"
+
+    quarter_start = datetime.datetime(2020, 10, 1)
     quarter_end = datetime.datetime(2020, 12, 31)
 
     for pi_lastname, expected_total in zip(
@@ -62,9 +64,14 @@ def test_assemble_bill():
                 "Cherry",
                 "Durian",
                 "Ice Cream",
-                "Jackfruit"],
-            [250, 125+250, 62.5+250, 12.5+375, 25, 37.5+250]):
-        bill = billing.assemble_bill(pi_df, user_df, pi_lastname, quarter_end)
+                "Jackfruit",
+                "Kiwi"],
+            [250, 125+250, 62.5+250, 12.5+375, 25, 37.5+250, 50+250]):
+        bill = billing.assemble_bill(pi_df,
+                                     user_df,
+                                     pi_lastname,
+                                     quarter_start,
+                                     quarter_end)
 
         assert bill.calculate_total() == expected_total
 
@@ -74,7 +81,7 @@ def test_generate_pi_bill(capsys, tmp_path):
     billing.generate_pi_bill(MOCK_PI_FORM,
                              MOCK_USER_FORM,
                              "Apple",
-                             "2020-12-31")
+                             ["2020-10-01", "2020-12-31"])
 
     bill = capsys.readouterr().out
     expected_bill = "\n".join([
@@ -92,7 +99,7 @@ def test_generate_pi_bill(capsys, tmp_path):
     billing.generate_pi_bill(MOCK_PI_FORM,
                              MOCK_USER_FORM,
                              "Banana",
-                             "2020-12-31",
+                             ["2020-10-01", "2020-12-31"],
                              out_file=tmp_path / "test.txt")
 
     expected_bill = "\n".join([
