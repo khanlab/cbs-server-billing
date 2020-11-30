@@ -36,6 +36,7 @@ def test_load_user_df():
                                                   "first_name",
                                                   "last_name",
                                                   "pi_last_name",
+                                                  "end_timestamp",
                                                   "power_user"]):
         assert actual == expected
     assert len(user_df.index) == 5
