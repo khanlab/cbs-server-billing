@@ -1,6 +1,7 @@
 """Utilities to calculate CBS Server billing"""
 
 import argparse
+import calendar
 import datetime
 import os
 
@@ -14,92 +15,291 @@ FIRST_POWERUSER_PRICE = 1000
 ADDITIONAL_POWERUSER_PRICE = 500
 
 
-class QuarterlyStorageRecord:
-    """Record describing one PI's storage use in a quarter.
+def get_end_of_quarter(start_year, start_month):
+    """Return the end date of a quarter starting in the given month.
+
+    Parameters
+    ----------
+    start_year : int
+        Starting year of the quarter.
+    start_month : int
+        Starting month of the quarter.
+
+    Returns
+    -------
+    date
+        Last day of the quarter.
+    """
+    if start_month <= 10:
+        year = start_year
+        month = start_month + 2
+    else:
+        year = start_year + 1
+        month = start_month - 10
+
+    return datetime.date(year,
+                         month,
+                         calendar.monthrange(year, month)[-1])
+
+
+class BillingPolicy:
+    """Class containing all billing policy information."""
+    STORAGE_PRICE = 50
+    FIRST_POWER_USER_PRICE = 1000
+    ADDITIONAL_POWER_USER_PRICE = 500
+
+    def get_quarterly_storage_price(self,
+                                    storage_record,
+                                    pi_last_name,
+                                    start_date):
+        """Calculate a quarter's storage price for one PI.
+
+        Parameters
+        ----------
+        storage_record : StorageRecord
+            Record with all the storage information.
+        pi_last_name : str
+            Last name of the PI to query.
+        start_date : date
+            Date in the first month of the quarter.
+
+        Returns
+        -------
+        float
+            Total storage price for the PI for the quarter.
+        """
+        end_date = get_end_of_quarter(start_date.year,
+                                      start_date.month)
+        if storage_record.get_storage_start(pi_last_name) > end_date:
+            return 0
+        storage_amount = storage_record.get_storage_amount(pi_last_name)
+        return storage_amount * self.STORAGE_PRICE * 0.25
+
+    def enumerate_quarterly_power_user_prices(self,
+                                              power_users_record,
+                                              pi_last_name,
+                                              start_date):
+        """Calculate the price each of one PI's power users in a quarter.
+
+        Parameters
+        ----------
+        power_users_record : PowerUsersRecord
+            Record with all the storage information.
+        pi_last_name : str
+            Last name of the PI to query.
+        start_date : date
+            Date in the first month of the quarter.
+
+        Returns
+        -------
+        list of tuple
+            A tuple for each of the PI's power users, including the user's
+            name, start date, end date, and price.
+        """
+        end_date = get_end_of_quarter(start_date.year,
+                                      start_date.month)
+        power_users = power_users_record.enumerate_power_users(
+            pi_last_name,
+            start_date,
+            end_date)
+
+        price_record = []
+        for idx, user in enumerate(power_users):
+            price = (self.FIRST_POWER_USER_PRICE * 0.25 if idx == 0 else
+                     self.ADDITIONAL_POWER_USER_PRICE * 0.25)
+            price_record.append((user[0], user[1], user[2], price))
+
+        return price_record
+
+    def get_quarterly_power_user_price(self,
+                                       power_users_record,
+                                       pi_last_name,
+                                       quarter_start):
+        """Calculate a quarter's power user price for one PI.
+
+        Parameters
+        ----------
+        power_users_record : PowerUsersRecord
+            Record with all the power user information.
+        pi_last_name : str
+            Last name of the PI to query.
+        quarter_start : date
+            Date in the first month of the quarter.
+
+        Returns
+        -------
+        float
+            Total power users price for the PI for the quarter.
+        """
+
+        return sum([
+            user[3] for user in self.enumerate_quarterly_power_user_prices(
+                power_users_record,
+                pi_last_name,
+                quarter_start)])
+
+    def get_quarterly_total_price(self,
+                                  storage_record,
+                                  power_users_record,
+                                  pi_last_name,
+                                  quarter_start):
+        """Calculate a quarter's total price for one PI.
+
+        Parameters
+        ----------
+        power_users_record : PowerUsersRecord
+            Record with all the power user information.
+        storage_record : StorageRecord
+            Record with all the storage information.
+        pi_last_name : str
+            Last name of the PI to query.
+        quarter_start : date
+            Date in the first month of the quarter.
+
+        Returns
+        -------
+        float
+            Total power users price for the PI for the quarter.
+        """
+        return (
+            self.get_quarterly_storage_price(storage_record,
+                                             pi_last_name,
+                                             quarter_start)
+            + self.get_quarterly_power_user_price(power_users_record,
+                                                  pi_last_name,
+                                                  quarter_start))
+
+    def generate_quarterly_bill_txt(self,
+                                    pi_last_name,
+                                    storage_record,
+                                    power_users_record,
+                                    start_date):
+        """Generate a textual summary of the PI's bill.
+
+        Returns
+        -------
+        str
+            Text-formatted billing report.
+        """
+        storage_subtotal = self.get_quarterly_storage_price(storage_record,
+                                                            pi_last_name,
+                                                            start_date)
+        power_user_subtotal = self.get_quarterly_power_user_price(
+            power_users_record,
+            pi_last_name,
+            start_date)
+        lines = ([
+            "Billing report for {}".format(pi_last_name),
+            "Storage",
+            ("Start: {}, Size: {} TB, Annual price per TB: ${:.2f}, "
+                + "Quarterly Price: ${:.2f}").format(
+                storage_record.get_storage_start(pi_last_name),
+                storage_record.get_storage_amount(pi_last_name),
+                self.STORAGE_PRICE,
+                storage_subtotal),
+            "Speed code: {}, Subtotal: ${:.2f}".format(
+                storage_record.get_speed_code(pi_last_name),
+                storage_subtotal),
+            "Power Users"]
+            + [(
+                "Name: {}, Start: {}, Annual price: ${:.2f}, "
+                + "Quarterly price: ${:.2f}").format(
+                    last_name,
+                    start,
+                    price * 4,
+                    price)
+                for last_name, start, _, price in (
+                    self.enumerate_quarterly_power_user_prices(
+                        power_users_record,
+                        pi_last_name,
+                        start_date))]
+            + [
+                "Speed code: {}, Subtotal: ${:.2f}".format(
+                    storage_record.get_speed_code(pi_last_name),
+                    power_user_subtotal),
+                "Total: ${:.2f}".format(storage_subtotal
+                                        + power_user_subtotal)])
+        return "\n".join(lines) + "\n"
+
+
+class StorageRecord:
+    """Record describing all PIs' storage use.
 
     Attributes
     ----------
-    pi_storage_df : DataFrame
-        Dataframe containing each PI's storage information.
-    quarter_end : datetime
-        End of the quarter to which this record applies.
+    storage_df : DataFrame
+        Dataframe containing storage information.
     """
-    def __init__(self, pi_storage_df, quarter_end):
-        self.pi_storage_df = pi_storage_df
-        self.quarter_end = quarter_end
 
-    def get_storage_start(self):
-        """Get the date this PI's storage started.
+    def __init__(self, storage_df):
+        self.storage_df = storage_df
+
+    def get_storage_start(self, pi_last_name):
+        """Get a PI's storage start date.
+
+        Parameters
+        ----------
+        pi_last_name : str
+            Last name of the PI.
 
         Returns
         -------
         datetime
             Date this PI's storage started.
         """
-        return self.pi_storage_df["start_timestamp"].iloc[0]
+        return self.storage_df.loc[
+            self.storage_df["last_name"] == pi_last_name,
+            "start_timestamp"].iloc[0]
 
-    def get_storage_amount(self):
+    def get_storage_amount(self, pi_last_name):
         """Get the amount of storage allocated to this PI.
+
+        Parameters
+        ----------
+        pi_last_name : str
+            Last name of the PI.
 
         Returns
         -------
         float
             Amount of storage (in TB) allocated to this PI.
         """
-        return self.pi_storage_df["storage"].iloc[0]
+        return self.storage_df.loc[
+            self.storage_df["last_name"] == pi_last_name,
+            "storage"].iloc[0]
 
-    def get_speed_code(self):
+    def get_speed_code(self, pi_last_name):
         """Get the speed code associated with this PI.
+
+        Parameters
+        ----------
+        pi_last_name : str
+            Last name of the PI.
 
         Returns
         -------
         str
             Speed code associated with this PI.
         """
-        return self.pi_storage_df["speed_code"].iloc[0]
-
-    def calculate_storage_price(self):
-        """Calculate the quarterly storage price for this PI.
-
-        Returns
-        float
-            Storage price (in CAD) for this PI in this quarter.
-        """
-        pi_storage = self.get_storage_amount()
-        return pi_storage * STORAGE_PRICE * 0.25
+        return self.storage_df.loc[
+            self.storage_df["last_name"] == pi_last_name,
+            "speed_code"].iloc[0]
 
 
-class QuarterlyPowerUsersRecord:
+class PowerUsersRecord:
     """Record describing the power users associated with one PI.
 
     Attributes
     ----------
-    pi_power_user_df : DataFrame
-        Dataframe containing each power user associated with this PI. Should
-        be generated by this module to apply the expected structure.
-    quarter_start : datetime
-        Start of the quarter to which this record applies
-    quarter_end : datetime
-        End of the quarter to which this record applies.
+    power_user_df : DataFrame
+        Dataframe containing each power user associated with this PI during the
+        quarter. Should be generated by this module to apply the expected
+        structure.
     """
-    def __init__(self, pi_power_user_df, quarter_start, quarter_end):
-        self.pi_power_user_df = pi_power_user_df
-        self.quarter_start = quarter_start
-        self.quarter_end = quarter_end
+    def __init__(self, power_user_df):
+        self.power_user_df = power_user_df
 
-    def calculate_power_users_price(self):
-        """Calculate the quarter's price for this PI's power users.
-
-        Returns
-        -------
-        float
-            Price (in CAD) for this PI's power users this quarter.
-        """
-
-        power_user_subtotal = sum(self.pi_power_user_df.loc[:, "price"])
-        return power_user_subtotal
-
-    def enumerate_power_users(self):
+    def enumerate_power_users(self, pi_last_name, start_date, end_date):
         """Generate a list of power users associated with this PI.
 
         Returns
@@ -109,98 +309,33 @@ class QuarterlyPowerUsersRecord:
             start datetime, last name, and associated price in CAD, in that
             order.
         """
-        return sorted(list(self.pi_power_user_df.loc[
-            :,
-            ["start_timestamp", "last_name", "fixed", "price"]].itertuples(
-                index=False)),
-            key=lambda x: x[0])
+        out_df = self.power_user_df.loc[
+            self.power_user_df["pi_last_name"] == pi_last_name,
+            ["last_name", "start_timestamp", "end_timestamp"]]
+        out_df = out_df.loc[
+            out_df["start_timestamp"] <= end_date, :]
+        out_df = out_df.loc[
+            out_df["end_timestamp"] >= start_date, :]
+        return sorted(list(out_df.itertuples(index=False)),
+                      key=lambda x: x[1])
 
-
-class QuarterlyBill:
-    """Record containing all information needed to bill one PI.
-
-    Attributes
-    ----------
-    pi_last_name : str
-        PI's last name.
-    quarterly_storage : QuarterlyStorageRecord
-        Record containing PI's storage information for the quarter.
-    quarter_power_users : QuarterlyPowerUsersRecord
-        Record containing PI's power user information for the quarter.
-    quarter_end : datetime
-        End date of the quarter to be billed.
-    """
-    def __init__(
-            self,
-            pi_last_name,
-            quarterly_storage,
-            quarterly_power_users,
-            quarter_end):
-        self.pi_last_name = pi_last_name
-        self.quarterly_storage = quarterly_storage
-        self.quarterly_power_users = quarterly_power_users
-        self.quarter_end = quarter_end
-
-    def calculate_total(self):
-        """Calculate total amount to bill this PI for the quarter.
-
-        Returns
-        -------
-        float
-            Price (in CAD) for the PI's CBS server usage for the quarter.
-        """
-        return (
-            self.quarterly_storage.calculate_storage_price()
-            + self.quarterly_power_users.calculate_power_users_price())
-
-    def generate_bill_txt(self):
-        """Generate a textual summary of the PI's bill.
-
-        Returns
-        -------
-        str
-            Text-formatted billing report.
-        """
-        lines = ([
-            "Billing report for {}".format(self.pi_last_name),
-            "Storage",
-            ("Start: {}, Size: {} TB, Annual price per TB: ${:.2f}, "
-                + "Quarterly Price: ${:.2f}").format(
-                self.quarterly_storage.get_storage_start().date(),
-                self.quarterly_storage.get_storage_amount(),
-                STORAGE_PRICE,
-                self.quarterly_storage.calculate_storage_price()),
-            "Speed code: {}, Subtotal: ${:.2f}".format(
-                self.quarterly_storage.get_speed_code(),
-                self.quarterly_storage.calculate_storage_price()),
-            "Power Users"]
-            + [(
-                "Name: {}, Start: {}, Annual price: ${:.2f}, "
-                + "Quarterly price: ${:.2f}").format(
-                    last_name,
-                    start.date(),
-                    fixed,
-                    price)
-                for start, last_name, fixed, price in (
-                    self.quarterly_power_users.enumerate_power_users())]
-            + [
-                "Speed code: {}, Subtotal: ${:.2f}".format(
-                    self.quarterly_storage.get_speed_code(),
-                    self.quarterly_power_users.calculate_power_users_price()),
-                "Total: ${:.2f}".format(self.calculate_total())])
-        return "\n".join(lines) + "\n"
-
-    def save_bill_txt(self, out_path):
-        """Save a textual summary of the PI's bill.
+    def power_user_is_active(self, last_name, date):
+        """Check if a poweruser is active on a given date.
 
         Parameters
         ----------
-        out_path : str
-            Path to the file to be written.
+        last_name : str
+            Last name of the power user to check.
+        date : date
+            Date to check.
         """
-        bill_str = self.generate_bill_txt()
-        with open(out_path, "w") as out_file:
-            out_file.write(bill_str)
+        timestamps = self.power_user_df.loc[
+            self.power_user_df["last_name"] == last_name,
+            ["start_timestamp", "end_timestamp"]]
+        start_timestamp = timestamps.iloc[0, 0]
+        end_timestamp = timestamps.iloc[0, 1]
+
+        return start_timestamp <= date <= end_timestamp
 
 
 def load_user_df(user_form_path):
@@ -230,7 +365,11 @@ def load_user_df(user_form_path):
             + "(There is a fee associated with power user accounts.  "
             + "Check with your PI first!)":
                 "power_user"})
-    user_df = user_df.assign(power_user=user_df["power_user"] == "Yes")
+    user_df = user_df.assign(power_user=user_df["power_user"] == "Yes",
+                             start_timestamp=user_df["start_timestamp"].map(
+                                 lambda dt: dt.date()),
+                             end_timestamp=user_df["end_timestamp"].map(
+                                 lambda dt: dt.date()))
     return user_df
 
 
@@ -255,7 +394,9 @@ def load_pi_df(pi_form_path):
                 "pi_is_power_user",
             "Speed code": "speed_code",
             "Required storage needs (in TB)": "storage"})
-    pi_df = pi_df.assign(pi_is_power_user=pi_df["pi_is_power_user"] == "Yes")
+    pi_df = pi_df.assign(pi_is_power_user=pi_df["pi_is_power_user"] == "Yes",
+                         start_timestamp=pi_df["start_timestamp"].map(
+                             lambda dt: dt.date()))
     return pi_df
 
 
@@ -295,86 +436,6 @@ def add_pis_to_user_df(pi_df, user_df):
         columns={
             "pi_is_power_user": "power_user"})
     return pd.concat([user_df, pi_user_df], ignore_index=True)
-
-
-def assemble_bill(pi_df, user_df, pi_lastname, quarter_start, quarter_end):
-    """Assemble one quarter's billing data for a single PI.
-
-    Parameters
-    ----------
-    pi_df : DataFrame
-        PI data frame, with each PI's storage space and speed code included.
-    user_df : DataFrame
-        User data frame, with PI user accounts included.
-    pi_lastname : str
-        Last name of the PI to bill.
-    quarter_start : datetime
-        Start date of the quarter for which the bill is being assembled.
-    quarter_end : datetime
-        End date of the quarter for which the bill is being assembled.
-
-    Returns
-    -------
-    QuarterlyBill
-        Object with all the quarter's billing information for the PI included.
-    """
-    pi_row = pi_df.loc[pi_df["last_name"] == pi_lastname, :]
-    pi_start_timestamp = pi_row["start_timestamp"].iloc[0]
-    if pi_start_timestamp > quarter_end:
-        print("No PI storage this quarter.")
-        return None
-    pi_row = pi_row.assign(
-        fixed=STORAGE_PRICE,
-        quarterly=0.25)
-    pi_row = pi_row.assign(
-        price=pi_row["storage"] * pi_row["fixed"] * pi_row["quarterly"])
-    storage_record = QuarterlyStorageRecord(pi_row, quarter_end)
-
-    pi_users = user_df.loc[user_df["pi_last_name"] == pi_lastname, :]
-    pi_users = pi_users.loc[pi_users["start_timestamp"] < quarter_end, :]
-    pi_users = pi_users.loc[pi_users["end_timestamp"] > quarter_start, :]
-    pi_power_users = pi_users.loc[pi_users["power_user"], :]
-    pi_power_users = pi_power_users.sort_values(by="start_timestamp")
-    pi_power_users.index = range(len(pi_power_users))
-    pi_power_users = pi_power_users.assign(
-        fixed=pi_power_users.index.map(user_price_by_index),
-        quarterly=pi_power_users["start_timestamp"].map(
-            lambda ts: 0.25 if ts < quarter_start else 0.0))
-    pi_power_users = pi_power_users.assign(
-        price=pi_power_users["fixed"] * pi_power_users["quarterly"])
-
-    power_user_record = QuarterlyPowerUsersRecord(
-        pi_power_users,
-        quarter_start,
-        quarter_end)
-
-    return QuarterlyBill(
-        pi_lastname,
-        storage_record,
-        power_user_record,
-        quarter_end)
-
-
-def user_price_by_index(index):
-    """Calculate price for a user based on their (zero-)index.
-
-    The first power user used by a PI is priced differently than additional
-    power users. This function facilitates showing that price difference on a
-    bill.
-
-    Parameters
-    ----------
-    index : int
-        Zero-index of the user in question.
-
-    Returns
-    -------
-    float
-        Price (in CAD) of the power user account.
-    """
-    if index <= 0:
-        return FIRST_POWERUSER_PRICE
-    return ADDITIONAL_POWERUSER_PRICE
 
 
 def preprocess_forms(pi_path, user_path):
@@ -423,21 +484,20 @@ def generate_all_pi_bills(pi_path,
     out_dir : str, optional
         Directory into which to output bill text files.
     """
-    pi_df, user_df = preprocess_forms(pi_path, user_path)
-    quarter_start = datetime.datetime.fromisoformat(quarter_start_iso)
-    quarter_end = datetime.datetime.fromisoformat(quarter_end_iso)
+    pi_df, _ = preprocess_forms(pi_path, user_path)
+    quarter_start = datetime.date.fromisoformat(quarter_start_iso)
+    quarter_end = datetime.date.fromisoformat(quarter_end_iso)
 
     for pi_last_name in pi_df.loc[:, "last_name"]:
         out_file = os.path.join(out_dir, "pi-{}_quarter-{}_bill.txt".format(
             pi_last_name,
             quarter_end_iso))
-        pi_bill = assemble_bill(pi_df,
-                                user_df,
-                                pi_last_name,
-                                quarter_start,
-                                quarter_end)
-
-        pi_bill.save_bill_txt(out_file)
+        generate_pi_bill(
+            pi_path,
+            user_path,
+            pi_last_name,
+            [quarter_start, quarter_end],
+            out_file)
 
 
 def generate_pi_bill(pi_path,
@@ -463,20 +523,24 @@ def generate_pi_bill(pi_path,
     """
     pi_df, user_df = preprocess_forms(pi_path, user_path)
 
-    quarter_start = datetime.datetime.fromisoformat(quarter[0])
-    quarter_end = datetime.datetime.fromisoformat(quarter[1])
+    quarter_start = datetime.date.fromisoformat(quarter[0])
 
-    pi_bill = assemble_bill(pi_df,
-                            user_df,
-                            pi_last_name,
-                            quarter_start,
-                            quarter_end)
+    storage_record = StorageRecord(pi_df)
+    power_users = user_df.loc[user_df["power_user"], :]
+    power_users_record = PowerUsersRecord(power_users)
 
+    policy = BillingPolicy()
+
+    bill_txt = policy.generate_quarterly_bill_txt(pi_last_name,
+                                                  storage_record,
+                                                  power_users_record,
+                                                  quarter_start)
     if out_file is not None:
-        pi_bill.save_bill_txt(out_file)
+        with open(out_file, "w") as writable:
+            writable.write(bill_txt)
         return
 
-    print(pi_bill.generate_bill_txt(), end="")
+    print(bill_txt, end="")
 
 
 if __name__ == "__main__":

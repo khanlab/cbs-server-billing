@@ -8,12 +8,6 @@ MOCK_PI_FORM = "tests/resources/mock_pi_form.xlsx"
 MOCK_USER_FORM = "tests/resources/mock_user_form.xlsx"
 
 
-def test_user_price_by_index():
-    """Test that `user_price_by_index` produces the correct prices."""
-    assert billing.user_price_by_index(0) == billing.FIRST_POWERUSER_PRICE
-    assert billing.user_price_by_index(1) == billing.ADDITIONAL_POWERUSER_PRICE
-
-
 def test_load_pi_df():
     """Test that `load_pi_df` properly loads the PI form data."""
     pi_df = billing.load_pi_df(MOCK_PI_FORM)
@@ -50,15 +44,17 @@ def test_preprocess_forms():
     assert user_df.loc[5, "last_name"] == "Apple"
 
 
-def test_assemble_bill():
-    """Test that `assemble_bill` works properly for all PIs."""
+def test_billing_policy():
+    """Test that `BillingPolicy` works properly for all PIs."""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
-    pi_lastname = "Apple"
+    storage_record = billing.StorageRecord(pi_df)
+    power_users = user_df.loc[user_df["power_user"], :]
+    power_users_record = billing.PowerUsersRecord(power_users)
+    policy = billing.BillingPolicy()
 
-    quarter_start = datetime.datetime(2020, 10, 1)
-    quarter_end = datetime.datetime(2020, 12, 31)
+    quarter_start = datetime.date(2020, 10, 1)
 
-    for pi_lastname, expected_total in zip(
+    for pi_last_name, expected_total in zip(
             [
                 "Apple",
                 "Banana",
@@ -67,14 +63,13 @@ def test_assemble_bill():
                 "Ice Cream",
                 "Jackfruit",
                 "Kiwi"],
-            [250, 125+250, 62.5+250, 12.5+375, 25, 37.5+250, 50+250]):
-        bill = billing.assemble_bill(pi_df,
-                                     user_df,
-                                     pi_lastname,
-                                     quarter_start,
-                                     quarter_end)
+            [250, 125+250, 62.5+250, 12.5+375, 25, 37.5+250, 50+375]):
 
-        assert bill.calculate_total() == expected_total
+        assert (policy.get_quarterly_total_price(storage_record,
+                                                 power_users_record,
+                                                 pi_last_name,
+                                                 quarter_start)
+                == expected_total)
 
 
 def test_generate_pi_bill(capsys, tmp_path):
