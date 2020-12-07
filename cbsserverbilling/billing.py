@@ -6,6 +6,7 @@ import datetime
 import os
 
 import pandas as pd
+from jinja2 import Environment, PackageLoader
 
 # Storage price in dollars/TB/year
 STORAGE_PRICE = 50
@@ -13,6 +14,11 @@ STORAGE_PRICE = 50
 # Power user prices in dollars/year
 FIRST_POWERUSER_PRICE = 1000
 ADDITIONAL_POWERUSER_PRICE = 500
+
+BILL_TEMPLATE = "cbs_server_bill.tex.jinja"
+
+env = Environment(
+    loader=PackageLoader("cbsserverbilling", "templates"))
 
 
 def get_end_of_quarter(start_year, start_month):
@@ -222,6 +228,76 @@ class BillingPolicy:
         return "\n".join(lines) + "\n"
 
 
+    def generate_quarterly_bill_tex(self,
+                                    storage_record,
+                                    power_users_record,
+                                    pi_last_name,
+                                    quarter_start):
+        """Generate tex file of a quarterly bill.
+
+        Parameters
+        ----------
+        power_users_record : PowerUsersRecord
+            Record with all the power user information.
+        storage_record : StorageRecord
+            Record with all the storage information.
+        pi_last_name : str
+            Last name of the PI to query.
+        quarter_start : date
+            Date in the first month of the quarter.
+        """
+        pi_name = storage_record.get_pi_full_name(pi_last_name)
+        start_date = quarter_start.strftime("%b %d, %Y")
+        end_date = get_end_of_quarter(quarter_start.year,
+                                      quarter_start.month).strftime(
+            "%b %d, %Y")
+        bill_date = datetime.date.today().strftime("%b %d, %Y")
+        storage_timestamp = (storage_record
+            .get_storage_start(pi_last_name)
+            .strftime("%b %d, %Y"))
+        storage_amount = storage_record.get_storage_amount(pi_last_name)
+        storage_price = "{:.2f}".format(STORAGE_PRICE)
+        storage_subtotal = "{:.2f}".format(
+            self.get_quarterly_storage_price(storage_record,
+                                             pi_last_name,
+                                             quarter_start))
+        power_users = [
+            {"last_name": record[0],
+             "start_date": record[1].strftime("%b %d, %Y"),
+             "end_date": record[2].strftime("%b %d, %Y"),
+             "price": "{:.2f}".format(record[3] * 4),
+             "subtotal": "{:.2f}".format(record[3])}
+            for record in self.enumerate_quarterly_power_user_prices(
+                power_users_record,
+                pi_last_name,
+                quarter_start)]
+        print(power_users)
+        power_users_subtotal = "{:.2f}".format(
+            self.get_quarterly_power_user_price(
+                power_users_record,
+                pi_last_name,
+                quarter_start))
+        total = "{:.2f}".format(self.get_quarterly_total_price(
+            storage_record,
+            power_users_record,
+            pi_last_name,
+            quarter_start))
+
+        template = env.get_template(BILL_TEMPLATE)
+        return template.render(pi_name=pi_name,
+                               pi_last_name=pi_last_name,
+                               start_date=start_date,
+                               end_date=end_date,
+                               bill_date=bill_date,
+                               storage_timestamp=storage_timestamp,
+                               storage_amount=storage_amount,
+                               storage_price=storage_price,
+                               storage_subtotal=storage_subtotal,
+                               power_users=power_users,
+                               power_users_subtotal=power_users_subtotal,
+                               total=total)
+
+
 class StorageRecord:
     """Record describing all PIs' storage use.
 
@@ -233,6 +309,24 @@ class StorageRecord:
 
     def __init__(self, storage_df):
         self.storage_df = storage_df
+
+    def get_pi_full_name(self, pi_last_name):
+        """Get a PI's full name.
+
+        Parameters
+        ----------
+        pi_last_name : str
+            Last name of the PI
+
+        Returns
+        str
+            Full name of the PI
+        """
+        return (self.storage_df.loc[
+            self.storage_df["last_name"] == pi_last_name,
+            "first_name"].iloc[0]
+            + " "
+            + pi_last_name)
 
     def get_storage_start(self, pi_last_name):
         """Get a PI's storage start date.
