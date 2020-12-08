@@ -264,7 +264,8 @@ class BillingPolicy:
         power_users = [
             {"last_name": record[0],
              "start_date": record[1].strftime("%b %d, %Y"),
-             "end_date": record[2].strftime("%b %d, %Y"),
+             "end_date": "N/A" if record[2] is None
+                 else record[2].strftime("%b %d, %Y"),
              "price": "{:.2f}".format(record[3] * 4),
              "subtotal": "{:.2f}".format(record[3])}
             for record in self.enumerate_quarterly_power_user_prices(
@@ -409,7 +410,9 @@ class PowerUsersRecord:
         out_df = out_df.loc[
             out_df["start_timestamp"] <= end_date, :]
         out_df = out_df.loc[
-            out_df["end_timestamp"] >= start_date, :]
+                (out_df["end_timestamp"] >= start_date)
+                    | out_df["end_timestamp"].isna(),
+                :]
         return sorted(list(out_df.itertuples(index=False)),
                       key=lambda x: x[1])
 
@@ -524,8 +527,7 @@ def add_pis_to_user_df(pi_df, user_df):
             "pi_is_power_user"]]
     pi_user_df = pi_user_df.assign(
         pi_last_name=pi_user_df["last_name"],
-        end_timestamp=(pi_user_df["start_timestamp"]
-                       + datetime.timedelta(weeks=5200)))  # hack
+        end_timestamp=(None))
     pi_user_df = pi_user_df.rename(
         columns={
             "pi_is_power_user": "power_user"})
