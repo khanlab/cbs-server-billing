@@ -21,27 +21,37 @@ env = Environment(
     loader=PackageLoader("cbsserverbilling", "templates"))
 
 
-def get_end_of_quarter(start_year, start_month):
-    """Return the end date of a quarter starting in the given month.
+def get_end_of_period(start_year, start_month, num_months):
+    """Return the end date of a period starting in a given month.
 
     Parameters
     ----------
     start_year : int
-        Starting year of the quarter.
+        Starting year of the period.
     start_month : int
-        Starting month of the quarter.
+        Starting month of the period.
+    num_months : int
+        Length in months of the period.
 
     Returns
     -------
     date
-        Last day of the quarter.
+        Last day of the period.
     """
-    if start_month <= 10:
+    year = start_year
+    if num_months > 11:
+        year += num_months // 12
+        num_months = num_months % 12
+
+    if num_months == 0 and start_month == 1:
+        year -= 1
+        month = 12
+    elif start_month <= (13 - num_months):
         year = start_year
-        month = start_month + 2
+        month = start_month + (num_months - 1)
     else:
         year = start_year + 1
-        month = start_month - 10
+        month = start_month - (13 - num_months)
 
     return datetime.date(year,
                          month,
@@ -74,8 +84,9 @@ class BillingPolicy:
         float
             Total storage price for the PI for the quarter.
         """
-        end_date = get_end_of_quarter(start_date.year,
-                                      start_date.month)
+        end_date = get_end_of_period(start_date.year,
+                                     start_date.month,
+                                     3)
         if storage_record.get_storage_start(pi_last_name) > end_date:
             return 0
         storage_amount = storage_record.get_storage_amount(pi_last_name)
@@ -102,17 +113,31 @@ class BillingPolicy:
             A tuple for each of the PI's power users, including the user's
             name, start date, end date, and price.
         """
-        end_date = get_end_of_quarter(start_date.year,
-                                      start_date.month)
+        end_date = get_end_of_period(start_date.year,
+                                     start_date.month,
+                                     3)
         power_users = power_users_record.enumerate_power_users(
             pi_last_name,
             start_date,
             end_date)
 
         price_record = []
-        for idx, (name, user_start, user_end) in enumerate(power_users):
-            price = (self.FIRST_POWER_USER_PRICE * 0.25 if idx == 0 else
-                     self.ADDITIONAL_POWER_USER_PRICE * 0.25)
+        first_price_applied = False
+        for name, user_start, user_end in power_users:
+            if ((user_end is not None)
+                and user_end <= get_end_of_period(start_date.year,
+                                                 start_date.month,
+                                                 2)):
+                price = 0
+            elif user_start > get_end_of_period(start_date.year,
+                                                start_date.month,
+                                                1):
+                price = 0
+            elif not first_price_applied:
+                price = self.FIRST_POWER_USER_PRICE * 0.25
+                first_price_applied = True
+            else:
+                price = self.ADDITIONAL_POWER_USER_PRICE * 0.25
             price_record.append((name, user_start, user_end, price))
 
         return price_record
@@ -195,8 +220,9 @@ class BillingPolicy:
         """
         pi_name = storage_record.get_pi_full_name(pi_last_name)
         start_date = quarter_start.strftime("%b %d, %Y")
-        end_date = get_end_of_quarter(quarter_start.year,
-                                      quarter_start.month).strftime(
+        end_date = get_end_of_period(quarter_start.year,
+                                     quarter_start.month,
+                                     3).strftime(
             "%b %d, %Y")
         bill_date = datetime.date.today().strftime("%b %d, %Y")
         storage = {
