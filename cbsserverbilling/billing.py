@@ -227,7 +227,6 @@ class BillingPolicy:
                                         + power_user_subtotal)])
         return "\n".join(lines) + "\n"
 
-
     def generate_quarterly_bill_tex(self,
                                     storage_record,
                                     power_users_record,
@@ -252,20 +251,21 @@ class BillingPolicy:
                                       quarter_start.month).strftime(
             "%b %d, %Y")
         bill_date = datetime.date.today().strftime("%b %d, %Y")
-        storage_timestamp = (storage_record
-            .get_storage_start(pi_last_name)
-            .strftime("%b %d, %Y"))
-        storage_amount = storage_record.get_storage_amount(pi_last_name)
-        storage_price = "{:.2f}".format(STORAGE_PRICE)
-        storage_subtotal = "{:.2f}".format(
-            self.get_quarterly_storage_price(storage_record,
-                                             pi_last_name,
-                                             quarter_start))
+        storage = {
+            "timestamp": (storage_record
+                          .get_storage_start(pi_last_name)
+                          .strftime("%b %d, %Y")),
+            "amount": storage_record.get_storage_amount(pi_last_name),
+            "price": "{:.2f}".format(STORAGE_PRICE),
+            "subtotal": "{:.2f}".format(
+                self.get_quarterly_storage_price(storage_record,
+                                                 pi_last_name,
+                                                 quarter_start))}
         power_users = [
             {"last_name": record[0],
              "start_date": record[1].strftime("%b %d, %Y"),
              "end_date": "N/A" if record[2] is None
-                 else record[2].strftime("%b %d, %Y"),
+             else record[2].strftime("%b %d, %Y"),
              "price": "{:.2f}".format(record[3] * 4),
              "subtotal": "{:.2f}".format(record[3])}
             for record in self.enumerate_quarterly_power_user_prices(
@@ -290,10 +290,7 @@ class BillingPolicy:
                                start_date=start_date,
                                end_date=end_date,
                                bill_date=bill_date,
-                               storage_timestamp=storage_timestamp,
-                               storage_amount=storage_amount,
-                               storage_price=storage_price,
-                               storage_subtotal=storage_subtotal,
+                               storage=storage,
                                power_users=power_users,
                                power_users_subtotal=power_users_subtotal,
                                total=total)
@@ -411,7 +408,7 @@ class PowerUsersRecord:
             out_df["start_timestamp"] <= end_date, :]
         out_df = out_df.loc[
                 (out_df["end_timestamp"] >= start_date)
-                    | out_df["end_timestamp"].isna(),
+                | out_df["end_timestamp"].isna(),
                 :]
         return sorted(list(out_df.itertuples(index=False)),
                       key=lambda x: x[1])

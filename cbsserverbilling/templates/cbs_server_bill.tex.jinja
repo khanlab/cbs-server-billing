@@ -27,7 +27,7 @@
 Name & Start Date & End Date & Quantity & Unit Price & Quarter & Amount\\
 \midrule
 \bf Storage & & & & & &\\
-{{pi_last_name}} & {{storage_timestamp}} & N/A & {{storage_amount}} TB & \${{storage_price}} & 0.25 & \${{storage_subtotal}}\\
+{{pi_last_name}} & {{storage.timestamp}} & N/A & {{storage.amount}} TB & \${{storage.price}} & 0.25 & \${{storage.subtotal}}\\
 \bf Power Users\\
 {% for power_user in power_users %}
 {{power_user.last_name}} & {{power_user.start_date}} & {{power_user.end_date}} & 1 Power User & \${{power_user.price}} & 0.25 & \${{power_user.subtotal}}\\
