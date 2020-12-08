@@ -19,7 +19,7 @@ def test_load_pi_df():
                                                 "pi_is_power_user",
                                                 "speed_code"]):
         assert actual == expected
-    assert len(pi_df.index) == 7
+    assert len(pi_df.index) == 8
 
 
 def test_load_user_df():
@@ -33,15 +33,15 @@ def test_load_user_df():
                                                   "end_timestamp",
                                                   "power_user"]):
         assert actual == expected
-    assert len(user_df.index) == 5
+    assert len(user_df.index) == 7
 
 
 def test_preprocess_forms():
     """Test that `preprocess_forms` correctly assembles the data"""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
-    assert len(pi_df.index) == 7
-    assert len(user_df.index) == 12
-    assert user_df.loc[5, "last_name"] == "Apple"
+    assert len(pi_df.index) == 8
+    assert len(user_df.index) == 15
+    assert user_df.loc[7, "last_name"] == "Apple"
 
 
 def test_billing_policy():
@@ -62,8 +62,9 @@ def test_billing_policy():
                 "Durian",
                 "Ice Cream",
                 "Jackfruit",
-                "Kiwi"],
-            [250, 125+250, 62.5+250, 12.5+375, 25, 37.5+250, 50+375]):
+                "Kiwi",
+                "Mango"],
+            [250, 125+250, 62.5+250, 12.5+375, 25, 37.5+250, 50+375, 125+500]):
 
         assert (policy.get_quarterly_total_price(storage_record,
                                                  power_users_record,
