@@ -175,58 +175,6 @@ class BillingPolicy:
                                                   pi_last_name,
                                                   quarter_start))
 
-    def generate_quarterly_bill_txt(self,
-                                    pi_last_name,
-                                    storage_record,
-                                    power_users_record,
-                                    start_date):
-        """Generate a textual summary of the PI's bill.
-
-        Returns
-        -------
-        str
-            Text-formatted billing report.
-        """
-        storage_subtotal = self.get_quarterly_storage_price(storage_record,
-                                                            pi_last_name,
-                                                            start_date)
-        power_user_subtotal = self.get_quarterly_power_user_price(
-            power_users_record,
-            pi_last_name,
-            start_date)
-        lines = ([
-            "Billing report for {}".format(pi_last_name),
-            "Storage",
-            ("Start: {}, Size: {} TB, Annual price per TB: ${:.2f}, "
-                + "Quarterly Price: ${:.2f}").format(
-                storage_record.get_storage_start(pi_last_name),
-                storage_record.get_storage_amount(pi_last_name),
-                self.STORAGE_PRICE,
-                storage_subtotal),
-            "Speed code: {}, Subtotal: ${:.2f}".format(
-                storage_record.get_speed_code(pi_last_name),
-                storage_subtotal),
-            "Power Users"]
-            + [(
-                "Name: {}, Start: {}, Annual price: ${:.2f}, "
-                + "Quarterly price: ${:.2f}").format(
-                    last_name,
-                    start,
-                    price * 4,
-                    price)
-                for last_name, start, _, price in (
-                    self.enumerate_quarterly_power_user_prices(
-                        power_users_record,
-                        pi_last_name,
-                        start_date))]
-            + [
-                "Speed code: {}, Subtotal: ${:.2f}".format(
-                    storage_record.get_speed_code(pi_last_name),
-                    power_user_subtotal),
-                "Total: ${:.2f}".format(storage_subtotal
-                                        + power_user_subtotal)])
-        return "\n".join(lines) + "\n"
-
     def generate_quarterly_bill_tex(self,
                                     storage_record,
                                     power_users_record,
@@ -272,7 +220,6 @@ class BillingPolicy:
                 power_users_record,
                 pi_last_name,
                 quarter_start)]
-        print(power_users)
         power_users_subtotal = "{:.2f}".format(
             self.get_quarterly_power_user_price(
                 power_users_record,
@@ -560,7 +507,6 @@ def preprocess_forms(pi_path, user_path):
 def generate_all_pi_bills(pi_path,
                           user_path,
                           quarter_start_iso,
-                          quarter_end_iso,
                           out_dir):
     """Loop through all PIs and save a bill for each.
 
@@ -572,24 +518,20 @@ def generate_all_pi_bills(pi_path,
         Path to the user form data.
     quarter_start_iso : str
         ISO formatted end date of the billing quarter.
-    quarter_end_iso : str
-        ISO formatted end date of the billing quarter.
     out_dir : str, optional
         Directory into which to output bill text files.
     """
     pi_df, _ = preprocess_forms(pi_path, user_path)
-    quarter_start = datetime.date.fromisoformat(quarter_start_iso)
-    quarter_end = datetime.date.fromisoformat(quarter_end_iso)
 
     for pi_last_name in pi_df.loc[:, "last_name"]:
-        out_file = os.path.join(out_dir, "pi-{}_quarter-{}_bill.txt".format(
+        out_file = os.path.join(out_dir, "pi-{}_quarter-{}_bill.tex".format(
             pi_last_name,
-            quarter_end_iso))
+            quarter_start_iso))
         generate_pi_bill(
             pi_path,
             user_path,
             pi_last_name,
-            [quarter_start, quarter_end],
+            quarter_start_iso,
             out_file)
 
 
@@ -608,15 +550,14 @@ def generate_pi_bill(pi_path,
         Path to the user form data.
     pi_last_name : str
         Last name of the PI to bill.
-    quarter : list of str
-        Two-element list with the ISO formatted start date and end date of
-        the billing quarter.
+    quarter : str
+        ISO formatted start date of the billing quarter.
     out_file : str, optional
         Path to output text file.
     """
     pi_df, user_df = preprocess_forms(pi_path, user_path)
 
-    quarter_start = datetime.date.fromisoformat(quarter[0])
+    quarter_start = datetime.date.fromisoformat(quarter)
 
     storage_record = StorageRecord(pi_df)
     power_users = user_df.loc[user_df["power_user"], :]
@@ -624,16 +565,16 @@ def generate_pi_bill(pi_path,
 
     policy = BillingPolicy()
 
-    bill_txt = policy.generate_quarterly_bill_txt(pi_last_name,
-                                                  storage_record,
+    bill_tex = policy.generate_quarterly_bill_tex(storage_record,
                                                   power_users_record,
+                                                  pi_last_name,
                                                   quarter_start)
     if out_file is not None:
         with open(out_file, "w") as writable:
-            writable.write(bill_txt)
+            writable.write(bill_tex)
         return
 
-    print(bill_txt, end="")
+    print(bill_tex, end="")
 
 
 if __name__ == "__main__":
@@ -646,9 +587,6 @@ if __name__ == "__main__":
     parser.add_argument("quarter_start",
                         type=str,
                         help="first day of the quarter to bill")
-    parser.add_argument("quarter_end",
-                        type=str,
-                        help="last day of the quarter to bill")
     parser.add_argument("out_dir",
                         type=str,
                         help="directory into which to output bill files")
@@ -658,5 +596,4 @@ if __name__ == "__main__":
         args.pi_form,
         args.user_form,
         args.quarter_start,
-        args.quarter_end,
         args.out_dir)

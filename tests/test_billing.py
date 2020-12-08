@@ -74,41 +74,34 @@ def test_billing_policy():
 
 def test_generate_pi_bill(capsys, tmp_path):
     """Test that `generate_pi_bill` populates a bill correctly."""
+    with open("tests/resources/kiwi_expected.tex", "r") as expected_file:
+        expected_bill = expected_file.read()
+
     billing.generate_pi_bill(MOCK_PI_FORM,
                              MOCK_USER_FORM,
-                             "Apple",
-                             ["2020-10-01", "2020-12-31"])
+                             "Kiwi",
+                             "2020-11-01")
 
     bill = capsys.readouterr().out
-    expected_bill = "\n".join([
-        "Billing report for Apple",
-        "Storage",
-        "Start: 2019-12-10, Size: 20 TB, Annual price per TB: $50.00, "
-        + "Quarterly Price: $250.00",
-        "Speed code: AAAA, Subtotal: $250.00",
-        "Power Users",
-        "Speed code: AAAA, Subtotal: $0.00",
-        "Total: $250.00\n"])
-
-    assert bill == expected_bill
+    for actual_line, expected_line in zip(
+            bill.split("\n\n"),
+            expected_bill.split("\n\n")):
+        # Date line will always change
+        if expected_line.startswith(r"{\bf Date"):
+            continue
+        assert actual_line == expected_line
 
     billing.generate_pi_bill(MOCK_PI_FORM,
                              MOCK_USER_FORM,
-                             "Banana",
-                             ["2020-10-01", "2020-12-31"],
+                             "Kiwi",
+                             "2020-11-01",
                              out_file=tmp_path / "test.txt")
 
-    expected_bill = "\n".join([
-        "Billing report for Banana",
-        "Storage",
-        "Start: 2019-12-10, Size: 10 TB, Annual price per TB: $50.00, "
-        + "Quarterly Price: $125.00",
-        "Speed code: BBBB, Subtotal: $125.00",
-        "Power Users",
-        "Name: Fruit, Start: 2020-01-27, Annual price: $1000.00, "
-        + "Quarterly price: $250.00",
-        "Speed code: BBBB, Subtotal: $250.00",
-        "Total: $375.00\n"])
-
     with open(tmp_path / "test.txt", "r") as report_file:
-        assert report_file.read() == expected_bill
+        bill = report_file.read()
+    for actual_line, expected_line in zip(
+            bill.split("\n\n"),
+            expected_bill.split("\n\n")):
+        if expected_line.startswith(r"{\bf Date"):
+            continue
+        assert actual_line == expected_line
