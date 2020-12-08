@@ -110,9 +110,15 @@ class BillingPolicy:
             end_date)
 
         price_record = []
-        for idx, (name, user_start, user_end) in enumerate(power_users):
-            price = (self.FIRST_POWER_USER_PRICE * 0.25 if idx == 0 else
-                     self.ADDITIONAL_POWER_USER_PRICE * 0.25)
+        first_price_applied = False
+        for name, user_start, user_end in power_users:
+            if user_start > start_date:
+                price = 0
+            elif not first_price_applied:
+                price = self.FIRST_POWER_USER_PRICE * 0.25
+                first_price_applied = True
+            else:
+                price = self.ADDITIONAL_POWER_USER_PRICE * 0.25
             price_record.append((name, user_start, user_end, price))
 
         return price_record
