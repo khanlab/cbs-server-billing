@@ -110,10 +110,10 @@ class BillingPolicy:
             end_date)
 
         price_record = []
-        for idx, user in enumerate(power_users):
+        for idx, (name, user_start, user_end) in enumerate(power_users):
             price = (self.FIRST_POWER_USER_PRICE * 0.25 if idx == 0 else
                      self.ADDITIONAL_POWER_USER_PRICE * 0.25)
-            price_record.append((user[0], user[1], user[2], price))
+            price_record.append((name, user_start, user_end, price))
 
         return price_record
 
@@ -341,12 +341,21 @@ class PowerUsersRecord:
     def enumerate_power_users(self, pi_last_name, start_date, end_date):
         """Generate a list of power users associated with this PI.
 
+        Parameters
+        ----------
+        pi_last_name : str
+            PI of the users to enumerate.
+        start_date : date
+            First date to consider.
+        end_date : date
+            Last date to consider.
+
         Returns
         -------
         list of namedtuple
-            A list of namedtuples, where each namedtuple contain's the users
-            start datetime, last name, and associated price in CAD, in that
-            order.
+            A namedtuple for each user who was active on any day in the given
+            range, where each namedtuple contains the user's last name, start
+            date, and end date, in that order.
         """
         out_df = self.power_user_df.loc[
             self.power_user_df["pi_last_name"] == pi_last_name,
