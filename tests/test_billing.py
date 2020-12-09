@@ -5,6 +5,7 @@ import datetime
 from cbsserverbilling import billing
 
 MOCK_PI_FORM = "tests/resources/mock_pi_form.xlsx"
+MOCK_STORAGE_UPDATE_FORM = "tests/resources/mock_storage_update_form.xlsx"
 MOCK_USER_FORM = "tests/resources/mock_user_form.xlsx"
 
 
@@ -47,24 +48,32 @@ def test_preprocess_forms():
 def test_billing_policy():
     """Test that `BillingPolicy` works properly for all PIs."""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
-    storage_record = billing.StorageRecord(pi_df)
+    storage_update_df = billing.load_storage_update_df(
+        MOCK_STORAGE_UPDATE_FORM)
+    storage_record = billing.StorageRecord(pi_df, storage_update_df)
     power_users = user_df.loc[user_df["power_user"], :]
     power_users_record = billing.PowerUsersRecord(power_users)
     policy = billing.BillingPolicy()
 
     quarter_start = datetime.date(2020, 11, 1)
 
+    # Check that users active < 2 months aren't charged
     expected_user_prices = {"Mango": 1000 / 4,
                             "Nectarine": 500 / 4,
                             "Orange": 0,
                             "Pomegranate": 500 / 4,
                             "Quince": 0}
-
     for last_name, _, _, price in (
             policy.enumerate_quarterly_power_user_prices(power_users_record,
                                                          "Mango",
                                                          quarter_start)):
         assert price == expected_user_prices[last_name]
+
+    # Check that storage updates are applied
+    assert policy.get_quarterly_storage_price(
+        storage_record,
+        "Durian",
+        quarter_start) == 75
 
     for pi_last_name, expected_total in zip(
             [
@@ -76,7 +85,7 @@ def test_billing_policy():
                 "Jackfruit",
                 "Kiwi",
                 "Mango"],
-            [250, 125+250, 62.5+250, 12.5+375, 25, 37.5+250, 50+375, 125+500]):
+            [250, 125+250, 62.5+250, 75+375, 25, 37.5+250, 50+375, 125+500]):
 
         assert (policy.get_quarterly_total_price(storage_record,
                                                  power_users_record,
@@ -90,8 +99,9 @@ def test_generate_pi_bill(capsys, tmp_path):
     with open("tests/resources/kiwi_expected.tex", "r") as expected_file:
         expected_bill = expected_file.read()
 
-    billing.generate_pi_bill(MOCK_PI_FORM,
-                             MOCK_USER_FORM,
+    billing.generate_pi_bill([MOCK_PI_FORM,
+                              MOCK_STORAGE_UPDATE_FORM,
+                              MOCK_USER_FORM],
                              "Kiwi",
                              "2020-11-01")
 
@@ -104,8 +114,9 @@ def test_generate_pi_bill(capsys, tmp_path):
             continue
         assert actual_line == expected_line
 
-    billing.generate_pi_bill(MOCK_PI_FORM,
-                             MOCK_USER_FORM,
+    billing.generate_pi_bill([MOCK_PI_FORM,
+                              MOCK_STORAGE_UPDATE_FORM,
+                              MOCK_USER_FORM],
                              "Kiwi",
                              "2020-11-01",
                              out_file=tmp_path / "test.txt")
