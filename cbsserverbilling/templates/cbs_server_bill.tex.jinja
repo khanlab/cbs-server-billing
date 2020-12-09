@@ -15,10 +15,10 @@
 {{pi_name}} 
 
 {\bf Billing Period:} \\
-{{start_date}}--{{end_date}}
+{{dates.start}}--{{dates.end}}
 
 {\bf Date:} \\
-{{bill_date}}
+{{dates.bill}}
 
 \begin{table}[htb]
 \begin{center}
@@ -39,5 +39,8 @@ Name & Start Date & End Date & Quantity & Unit Price & Quarter & Amount\\
 \end{tabular}
 \end{center}
 \end{table}
+
+{\bf Billed to speed code:} \\
+{{speed_code}}
 
 \end{document}

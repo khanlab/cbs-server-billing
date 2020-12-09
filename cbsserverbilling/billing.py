@@ -220,12 +220,12 @@ class BillingPolicy:
             Date in the first month of the quarter.
         """
         pi_name = storage_record.get_pi_full_name(pi_last_name)
-        start_date = quarter_start.strftime("%b %d, %Y")
         end_date = get_end_of_period(quarter_start.year,
                                      quarter_start.month,
                                      3)
-        end_date_str = end_date.strftime("%b %d, %Y")
-        bill_date = datetime.date.today().strftime("%b %d, %Y")
+        dates = {"start": quarter_start.strftime("%b %d, %Y"),
+                 "end": end_date.strftime("%b %d, %Y"),
+                 "bill": datetime.date.today().strftime("%b %d, %Y")}
         storage = {
             "timestamp": (storage_record
                           .get_storage_start(pi_last_name)
@@ -258,17 +258,17 @@ class BillingPolicy:
             power_users_record,
             pi_last_name,
             quarter_start))
+        speed_code = storage_record.get_speed_code(pi_last_name)
 
         template = env.get_template(BILL_TEMPLATE)
         return template.render(pi_name=pi_name,
                                pi_last_name=pi_last_name,
-                               start_date=start_date,
-                               end_date=end_date_str,
-                               bill_date=bill_date,
+                               dates=dates,
                                storage=storage,
                                power_users=power_users,
                                power_users_subtotal=power_users_subtotal,
-                               total=total)
+                               total=total,
+                               speed_code=speed_code)
 
 
 class StorageRecord:
