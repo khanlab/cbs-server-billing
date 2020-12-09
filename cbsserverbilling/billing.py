@@ -126,8 +126,8 @@ class BillingPolicy:
         for name, user_start, user_end in power_users:
             if ((user_end is not None)
                 and user_end <= get_end_of_period(start_date.year,
-                                                 start_date.month,
-                                                 2)):
+                                                  start_date.month,
+                                                  2)):
                 price = 0
             elif user_start > get_end_of_period(start_date.year,
                                                 start_date.month,
