@@ -524,13 +524,12 @@ def load_user_df(user_form_path):
             "Email Address": "email",
             "First name": "first_name",
             "Last name": "last_name",
-            "PI Name": "pi_last_name",
+            "PI Last Name": "pi_last_name",
             "Contract end date (account expiration)": "end_timestamp",
-            "Do you need your account to be a power user account? "
-            + "(There is a fee associated with power user accounts.  "
-            + "Check with your PI first!)":
+            "Do you need your account to be a power user account?":
                 "power_user"})
-    user_df = user_df.assign(power_user=user_df["power_user"] == "Yes")
+    user_df = user_df.assign(
+        power_user=user_df["power_user"].str.strip() == "Yes")
     return user_df
 
 
@@ -568,9 +567,9 @@ def load_user_update_df(user_update_form_path):
             "Optional: Please feel free to leave any feedback.":
                 "feedback"})
     user_update_df = user_update_df.assign(
-        agree=user_update_df["agree"] == "Yes",
+        agree=user_update_df["agree"].str.strip() == "Yes",
         new_power_user=user_update_df["new_power_user"].map(
-            lambda x: None if pd.isna(x) else x == "Power user"))
+            lambda x: None if pd.isna(x) else x.strip() == "Power user"))
     return user_update_df
 
 
@@ -595,7 +594,8 @@ def load_pi_df(pi_form_path):
                 "pi_is_power_user",
             "Speed code": "speed_code",
             "Required storage needs (in TB)": "storage"})
-    pi_df = pi_df.assign(pi_is_power_user=pi_df["pi_is_power_user"] == "Yes")
+    pi_df = pi_df.assign(
+        pi_is_power_user=pi_df["pi_is_power_user"].str.strip() == "Yes")
     return pi_df
 
 
@@ -628,7 +628,7 @@ def load_storage_update_df(storage_update_form_path):
                 "agree",
             "Optional: Please feel free to leave any feedback.": "feedback"})
     storage_update_df = storage_update_df.assign(
-        agree=storage_update_df["agree"] == "Yes")
+        agree=storage_update_df["agree"].str.strip() == "Yes")
     return storage_update_df
 
 
