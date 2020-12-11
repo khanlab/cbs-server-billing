@@ -7,6 +7,7 @@ from cbsserverbilling import billing
 MOCK_PI_FORM = "tests/resources/mock_pi_form.xlsx"
 MOCK_STORAGE_UPDATE_FORM = "tests/resources/mock_storage_update_form.xlsx"
 MOCK_USER_FORM = "tests/resources/mock_user_form.xlsx"
+MOCK_USER_UPDATE_FORM = "tests/resources/mock_user_update_form.xlsx"
 
 
 def test_load_pi_df():
@@ -20,7 +21,7 @@ def test_load_pi_df():
                                                 "pi_is_power_user",
                                                 "speed_code"]):
         assert actual == expected
-    assert len(pi_df.index) == 8
+    assert len(pi_df.index) == 9
 
 
 def test_load_user_df():
@@ -34,15 +35,15 @@ def test_load_user_df():
                                                   "end_timestamp",
                                                   "power_user"]):
         assert actual == expected
-    assert len(user_df.index) == 9
+    assert len(user_df.index) == 13
 
 
 def test_preprocess_forms():
     """Test that `preprocess_forms` correctly assembles the data"""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
-    assert len(pi_df.index) == 8
-    assert len(user_df.index) == 17
-    assert user_df.loc[9, "last_name"] == "Apple"
+    assert len(pi_df.index) == 9
+    assert len(user_df.index) == 22
+    assert user_df.loc[13, "last_name"] == "Apple"
 
 
 def test_billing_policy():
@@ -50,9 +51,10 @@ def test_billing_policy():
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
     storage_update_df = billing.load_storage_update_df(
         MOCK_STORAGE_UPDATE_FORM)
+    user_update_df = billing.load_user_update_df(
+        MOCK_USER_UPDATE_FORM)
     storage_record = billing.StorageRecord(pi_df, storage_update_df)
-    power_users = user_df.loc[user_df["power_user"], :]
-    power_users_record = billing.PowerUsersRecord(power_users)
+    power_users_record = billing.PowerUsersRecord(user_df, user_update_df)
     policy = billing.BillingPolicy()
 
     quarter_start = datetime.date(2020, 11, 1)
@@ -84,8 +86,18 @@ def test_billing_policy():
                 "Ice Cream",
                 "Jackfruit",
                 "Kiwi",
-                "Mango"],
-            [250, 125+250, 62.5+250, 75+375, 25, 37.5+250, 50+375, 125+500]):
+                "Mango",
+                "Raspberry"],
+            [
+                250,
+                125+250,
+                62.5+250,
+                75+375,
+                25,
+                37.5+250,
+                50+375,
+                125+500,
+                50+375]):
 
         assert (policy.get_quarterly_total_price(storage_record,
                                                  power_users_record,
@@ -101,7 +113,8 @@ def test_generate_pi_bill(capsys, tmp_path):
 
     billing.generate_pi_bill([MOCK_PI_FORM,
                               MOCK_STORAGE_UPDATE_FORM,
-                              MOCK_USER_FORM],
+                              MOCK_USER_FORM,
+                              MOCK_USER_UPDATE_FORM],
                              "Kiwi",
                              "2020-11-01")
 
@@ -116,7 +129,8 @@ def test_generate_pi_bill(capsys, tmp_path):
 
     billing.generate_pi_bill([MOCK_PI_FORM,
                               MOCK_STORAGE_UPDATE_FORM,
-                              MOCK_USER_FORM],
+                              MOCK_USER_FORM,
+                              MOCK_USER_UPDATE_FORM],
                              "Kiwi",
                              "2020-11-01",
                              out_file=tmp_path / "test.txt")
