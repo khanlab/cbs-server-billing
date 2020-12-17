@@ -71,11 +71,15 @@ def test_billing_policy():
                                                          quarter_start)):
         assert price == expected_user_prices[last_name]
 
-    # Check that storage updates are applied
+    # Check that mid-quarter storage updates are applied (or not) correctly
     assert policy.get_quarterly_storage_price(
         storage_record,
         "Durian",
-        quarter_start) == 75
+        quarter_start) == 12.5
+    assert policy.get_quarterly_storage_price(
+        storage_record,
+        "Banana",
+        quarter_start) == 62.5
 
     for pi_last_name, expected_total in zip(
             [
@@ -90,9 +94,9 @@ def test_billing_policy():
                 "Raspberry"],
             [
                 250,
-                125+250,
                 62.5+250,
-                75+375,
+                62.5+250,
+                12.5+375,
                 25,
                 37.5+250,
                 50+375,

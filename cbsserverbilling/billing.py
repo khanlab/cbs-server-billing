@@ -81,13 +81,20 @@ class BillingPolicy:
         float
             Total storage price for the PI for the quarter.
         """
-        end_date = get_end_of_period(start_date.year, start_date.month, 3)
-        if storage_record.get_storage_start(pi_last_name) > end_date:
+        cutoff_date = get_end_of_period(start_date.year, start_date.month, 1)
+        if storage_record.get_storage_start(pi_last_name) > cutoff_date:
             return 0
-        storage_amount = storage_record.get_storage_amount(
-            pi_last_name, end_date
+        return (
+            min(
+                storage_record.get_storage_amount(pi_last_name, cutoff_date),
+                storage_record.get_storage_amount(
+                    pi_last_name,
+                    get_end_of_period(start_date.year, start_date.month, 2),
+                ),
+            )
+            * self.STORAGE_PRICE
+            * 0.25
         )
-        return storage_amount * self.STORAGE_PRICE * 0.25
 
     def enumerate_quarterly_power_user_prices(
         self, power_users_record, pi_last_name, start_date
