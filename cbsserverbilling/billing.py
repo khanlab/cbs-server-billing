@@ -738,7 +738,7 @@ def load_storage_update_df(storage_update_form_path):
                 + "If yes, please list the project names."
             ): "access_groups",
             (
-                "By clicking yes below, you agree with these general terms."
+                "By clicking yes below, you agree with these general terms. "
             ): "agree",
             "Optional: Please feel free to leave any feedback.": "feedback",
             "I would like to close my server account": "account_closed",
