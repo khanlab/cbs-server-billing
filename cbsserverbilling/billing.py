@@ -55,6 +55,37 @@ def get_end_of_period(start_year, start_month, num_months):
     return datetime.date(year, month, calendar.monthrange(year, month)[-1])
 
 
+def is_billable_pi(storage_record, pi_last_name, start_date):
+    """Check whether a PI is billable in this quarter.
+
+    A PI is billable if their account was created before the end of the
+    period, and either still open or closed more than two months into the
+    period.
+
+    Parameters
+    ----------
+    storage_record : StorageRecord
+        Record with all the storage information.
+    pi_last_name : str
+        Last name of the PI to query.
+    start_date : date
+        Date in the first month of the quarter.
+
+    Returns
+    -------
+    bool
+        True if the PI is billable in the specified period.
+    """
+    end_date = get_end_of_period(start_date.year, start_date.month, 3)
+    if storage_record.get_storage_start(pi_last_name) > end_date:
+        return False
+    cutoff_date = get_end_of_period(start_date.year, start_date.month, 2)
+    account_close_date = storage_record.get_pi_account_close_date(pi_last_name)
+    if pd.isna(account_close_date) or (account_close_date > cutoff_date):
+        return True
+    return False
+
+
 class BillingPolicy:
     """Class containing all billing policy information."""
 
@@ -324,7 +355,7 @@ class StorageRecord:
 
         Returns
         -------
-        datetime
+        date
             Date this PI's storage started.
         """
         return (
@@ -334,6 +365,28 @@ class StorageRecord:
             .iloc[0]
             .date()
         )
+
+    def get_pi_account_close_date(self, pi_last_name):
+        """Get a PI's account closure date, if any.
+
+        Parameters
+        ----------
+        pi_last_name : str
+            Last name of the PI.
+
+        Returns
+        -------
+        date or None
+            Date this PI's account was closed, if any.
+        """
+        closure_row = self.storage_update_df.loc[
+                (self.storage_update_df["last_name"] == pi_last_name)
+                & (self.storage_update_df["account_closed"]),
+                "timestamp",
+            ]
+        if len(closure_row) == 0:
+            return None
+        return closure_row.iloc[0].date()
 
     def get_storage_amount(self, pi_last_name, date):
         """Get the amount of storage allocated to this PI on a given date.
@@ -668,10 +721,13 @@ def load_storage_update_df(storage_update_form_path):
                 "By clicking yes below, you agree with these general terms."
             ): "agree",
             "Optional: Please feel free to leave any feedback.": "feedback",
+            "I would like to close my server account": "account_closed",
         }
     )
     storage_update_df = storage_update_df.assign(
-        agree=storage_update_df["agree"].str.strip() == "Yes"
+        agree=storage_update_df["agree"].str.strip() == "Yes",
+        account_closed=storage_update_df["account_closed"].str.strip()
+        == "Yes",
     )
     return storage_update_df
 
@@ -773,6 +829,8 @@ def generate_all_pi_bills(paths, quarter_start_iso, out_dir):
 def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
     """Open data files and produce a report for one PI.
 
+    If the PI is not billable this quarter, this will do nothing.
+
     Parameters
     ----------
     paths: list of str
@@ -793,6 +851,9 @@ def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
 
     storage_record = StorageRecord(pi_df, storage_update_df)
     power_users_record = PowerUsersRecord(user_df, user_update_df)
+
+    if not is_billable_pi(storage_record, pi_last_name, quarter_start):
+        return
 
     policy = BillingPolicy()
 

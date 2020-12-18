@@ -21,7 +21,7 @@ def test_load_pi_df():
                                                 "pi_is_power_user",
                                                 "speed_code"]):
         assert actual == expected
-    assert len(pi_df.index) == 9
+    assert len(pi_df.index) == 10
 
 
 def test_load_user_df():
@@ -41,9 +41,27 @@ def test_load_user_df():
 def test_preprocess_forms():
     """Test that `preprocess_forms` correctly assembles the data"""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
-    assert len(pi_df.index) == 9
-    assert len(user_df.index) == 22
+    assert len(pi_df.index) == 10
+    assert len(user_df.index) == 23
     assert user_df.loc[13, "last_name"] == "Apple"
+
+
+def test_is_billable_pi():
+    """Test is_billable_pi"""
+    pi_df, _ = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
+    storage_update_df = billing.load_storage_update_df(
+        MOCK_STORAGE_UPDATE_FORM)
+    storage_record = billing.StorageRecord(pi_df, storage_update_df)
+    quarter_start = datetime.date(2020, 11, 1)
+
+    # Not closed
+    assert billing.is_billable_pi(storage_record, "Apple", quarter_start)
+    # Closed before cutoff
+    assert not billing.is_billable_pi(
+        storage_record, "Watermelon", quarter_start
+    )
+    # Closed after cutoff
+    assert billing.is_billable_pi(storage_record, "Jackfruit", quarter_start)
 
 
 def test_billing_policy():
@@ -114,6 +132,16 @@ def test_generate_pi_bill(capsys, tmp_path):
     """Test that `generate_pi_bill` populates a bill correctly."""
     with open("tests/resources/kiwi_expected.tex", "r") as expected_file:
         expected_bill = expected_file.read()
+
+    # Check account cancelled before quarter cutoff
+    billing.generate_pi_bill([MOCK_PI_FORM,
+                              MOCK_STORAGE_UPDATE_FORM,
+                              MOCK_USER_FORM,
+                              MOCK_USER_UPDATE_FORM],
+                             "Watermelon",
+                             "2020-11-01")
+    bill = capsys.readouterr().out
+    assert bill == ""
 
     billing.generate_pi_bill([MOCK_PI_FORM,
                               MOCK_STORAGE_UPDATE_FORM,
