@@ -55,43 +55,53 @@ def get_end_of_period(start_year, start_month, num_months):
     return datetime.date(year, month, calendar.monthrange(year, month)[-1])
 
 
-def is_billable_pi(storage_record, pi_last_name, start_date):
-    """Check whether a PI is billable in this quarter.
-
-    A PI is billable if their account was created before the end of the
-    period, and either still open or closed more than two months into the
-    period.
-
-    Parameters
-    ----------
-    storage_record : StorageRecord
-        Record with all the storage information.
-    pi_last_name : str
-        Last name of the PI to query.
-    start_date : date
-        Date in the first month of the quarter.
-
-    Returns
-    -------
-    bool
-        True if the PI is billable in the specified period.
-    """
-    end_date = get_end_of_period(start_date.year, start_date.month, 3)
-    if storage_record.get_storage_start(pi_last_name) > end_date:
-        return False
-    cutoff_date = get_end_of_period(start_date.year, start_date.month, 2)
-    account_close_date = storage_record.get_pi_account_close_date(pi_last_name)
-    if pd.isna(account_close_date) or (account_close_date > cutoff_date):
-        return True
-    return False
-
-
 class BillingPolicy:
     """Class containing all billing policy information."""
 
     STORAGE_PRICE = 50
     FIRST_POWER_USER_PRICE = 1000
     ADDITIONAL_POWER_USER_PRICE = 500
+
+    PERIOD_LENGTH = 3
+    MIN_BILL_USAGE = 2
+
+    def is_billable_pi(self, storage_record, pi_last_name, start_date):
+        """Check whether a PI is billable in this quarter.
+
+        A PI is billable if their account was created before the end of the
+        period, and either still open or closed more than two months into the
+        period.
+
+        Parameters
+        ----------
+        storage_record : StorageRecord
+            Record with all the storage information.
+        pi_last_name : str
+            Last name of the PI to query.
+        start_date : date
+            Date in the first month of the quarter.
+
+        Returns
+        -------
+        bool
+            True if the PI is billable in the specified period.
+        """
+        end_date = get_end_of_period(
+            start_date.year, start_date.month, self.PERIOD_LENGTH
+        )
+        if storage_record.get_storage_start(pi_last_name) > end_date:
+            return False
+        cutoff_date = get_end_of_period(
+            start_date.year,
+            start_date.month,
+            self.MIN_BILL_USAGE,
+        )
+        account_close_date = storage_record.get_pi_account_close_date(
+            pi_last_name
+        )
+        if pd.isna(account_close_date) or (account_close_date > cutoff_date):
+            return True
+        return False
 
     def get_quarterly_storage_price(
         self, storage_record, pi_last_name, start_date
@@ -112,7 +122,11 @@ class BillingPolicy:
         float
             Total storage price for the PI for the quarter.
         """
-        cutoff_date = get_end_of_period(start_date.year, start_date.month, 1)
+        cutoff_date = get_end_of_period(
+            start_date.year,
+            start_date.month,
+            self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
+        )
         if storage_record.get_storage_start(pi_last_name) > cutoff_date:
             return 0
         return (
@@ -120,7 +134,9 @@ class BillingPolicy:
                 storage_record.get_storage_amount(pi_last_name, cutoff_date),
                 storage_record.get_storage_amount(
                     pi_last_name,
-                    get_end_of_period(start_date.year, start_date.month, 2),
+                    get_end_of_period(
+                        start_date.year, start_date.month, self.MIN_BILL_USAGE
+                    ),
                 ),
             )
             * self.STORAGE_PRICE
@@ -147,7 +163,9 @@ class BillingPolicy:
             A tuple for each of the PI's power users, including the user's
             name, start date, end date, and price.
         """
-        end_date = get_end_of_period(start_date.year, start_date.month, 3)
+        end_date = get_end_of_period(
+            start_date.year, start_date.month, self.PERIOD_LENGTH
+        )
         power_users = power_users_record.enumerate_power_users(
             pi_last_name, start_date, end_date
         )
@@ -156,11 +174,13 @@ class BillingPolicy:
         first_price_applied = False
         for name, user_start, user_end in power_users:
             if (not pd.isna(user_end)) and user_end <= get_end_of_period(
-                start_date.year, start_date.month, 2
+                start_date.year, start_date.month, self.MIN_BILL_USAGE
             ):
                 price = 0
             elif user_start > get_end_of_period(
-                start_date.year, start_date.month, 1
+                start_date.year,
+                start_date.month,
+                self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
             ):
                 price = 0
             elif not first_price_applied:
@@ -246,7 +266,7 @@ class BillingPolicy:
         """
         pi_name = storage_record.get_pi_full_name(pi_last_name)
         end_date = get_end_of_period(
-            quarter_start.year, quarter_start.month, 3
+            quarter_start.year, quarter_start.month, self.PERIOD_LENGTH
         )
         dates = {
             "start": quarter_start.strftime("%b %d, %Y"),
@@ -380,10 +400,10 @@ class StorageRecord:
             Date this PI's account was closed, if any.
         """
         closure_row = self.storage_update_df.loc[
-                (self.storage_update_df["last_name"] == pi_last_name)
-                & (self.storage_update_df["account_closed"]),
-                "timestamp",
-            ]
+            (self.storage_update_df["last_name"] == pi_last_name)
+            & (self.storage_update_df["account_closed"]),
+            "timestamp",
+        ]
         if len(closure_row) == 0:
             return None
         return closure_row.iloc[0].date()
@@ -852,10 +872,10 @@ def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
     storage_record = StorageRecord(pi_df, storage_update_df)
     power_users_record = PowerUsersRecord(user_df, user_update_df)
 
-    if not is_billable_pi(storage_record, pi_last_name, quarter_start):
-        return
-
     policy = BillingPolicy()
+
+    if not policy.is_billable_pi(storage_record, pi_last_name, quarter_start):
+        return
 
     bill_tex = policy.generate_quarterly_bill_tex(
         storage_record, power_users_record, pi_last_name, quarter_start

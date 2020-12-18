@@ -53,15 +53,16 @@ def test_is_billable_pi():
         MOCK_STORAGE_UPDATE_FORM)
     storage_record = billing.StorageRecord(pi_df, storage_update_df)
     quarter_start = datetime.date(2020, 11, 1)
+    policy = billing.BillingPolicy()
 
     # Not closed
-    assert billing.is_billable_pi(storage_record, "Apple", quarter_start)
+    assert policy.is_billable_pi(storage_record, "Apple", quarter_start)
     # Closed before cutoff
-    assert not billing.is_billable_pi(
+    assert not policy.is_billable_pi(
         storage_record, "Watermelon", quarter_start
     )
     # Closed after cutoff
-    assert billing.is_billable_pi(storage_record, "Jackfruit", quarter_start)
+    assert policy.is_billable_pi(storage_record, "Jackfruit", quarter_start)
 
 
 def test_billing_policy():
