@@ -423,23 +423,23 @@ class StorageRecord:
         float
             Amount of storage (in TB) allocated to this PI.
         """
-        pi_storage_updates = self.storage_update_df.loc[
-            (self.storage_update_df["last_name"] == pi_last_name)
-            & (self.storage_update_df["timestamp"].dt.date <= date),
-            :,
-        ]
-        if len(pi_storage_updates) > 0:
-            return pi_storage_updates.loc[
-                pi_storage_updates["timestamp"].idxmax(), "new_storage"
-            ]
+        total_storage = 0
         pi_storage = self.storage_df.loc[
             (self.storage_df["last_name"] == pi_last_name)
             & (self.storage_df["start_timestamp"].dt.date <= date),
             :,
         ]
         if len(pi_storage) > 0:
-            return pi_storage.loc[:, "storage"].iloc[0]
-        return 0
+            total_storage += pi_storage.loc[:, "storage"].iloc[0]
+
+        pi_storage_updates = self.storage_update_df.loc[
+            (self.storage_update_df["last_name"] == pi_last_name)
+            & (self.storage_update_df["timestamp"].dt.date <= date),
+            :,
+        ]
+        if len(pi_storage_updates) > 0:
+            total_storage += pi_storage_updates.loc[:, "new_storage"].sum()
+        return total_storage
 
     def get_speed_code(self, pi_last_name):
         """Get the speed code associated with this PI.
@@ -667,7 +667,7 @@ def load_user_update_df(user_update_form_path):
             "Change account type": "new_power_user",
             "List projects for which you need security access": "new_projects",
             (
-                "By clicking yes below, you agree with these general terms."
+                "By clicking yes below, you agree with these general terms. "
             ): "agree",
             "Optional: Please feel free to leave any feedback.": "feedback",
         }

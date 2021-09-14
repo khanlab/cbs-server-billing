@@ -10,10 +10,6 @@ setuptools.setup(
     description="A script to generate CBS Server bills.",
     url="https://github.com/tkkuehn/cbs-server-billing",
     packages=setuptools.find_packages(),
-    package_data={
-        "cbsserverbilling": ["templates/cbs_server_bill.tex.jinja"]
-    },
-    install_requires=[
-        "pandas",
-        "xlrd",
-        "Jinja2"])
+    package_data={"cbsserverbilling": ["templates/cbs_server_bill.tex.jinja"]},
+    install_requires=["pandas", "xlrd", "Jinja2"],
+)
