@@ -815,6 +815,47 @@ def preprocess_forms(pi_path, user_path):
     return (pi_df, user_df)
 
 
+def summarize_all_pi_bills(paths, quarter_start_iso):
+    pi_df, user_df = preprocess_forms(paths[0], paths[2])
+    storage_update_df = load_storage_update_df(paths[1])
+    user_update_df = load_user_update_df(paths[3])
+
+    quarter_start = datetime.date.fromisoformat(quarter_start_iso)
+
+    storage_record = StorageRecord(pi_df, storage_update_df)
+    power_users_record = PowerUsersRecord(user_df, user_update_df)
+
+    policy = BillingPolicy()
+
+    summary = [
+        {
+            "pi": pi_last_name,
+            "storage": policy.get_quarterly_storage_price(
+                storage_record, pi_last_name, quarter_start
+            ),
+            "compute": policy.get_quarterly_power_user_price(
+                power_users_record, pi_last_name, quarter_start
+            ),
+        }
+        for pi_last_name in pi_df.loc[:, "last_name"]
+        if policy.is_billable_pi(storage_record, pi_last_name, quarter_start)
+    ]
+
+    total_storage = sum([pi_bill["storage"] for pi_bill in summary])
+    mean_storage = total_storage / len(summary)
+    total_compute = sum([pi_bill["compute"] for pi_bill in summary])
+    mean_compute = total_compute / len(summary)
+    total = total_storage + total_compute
+    mean = total / len(summary)
+
+    print(f"Total (Storage): {total_storage}")
+    print(f"Mean (Storage): {mean_storage}")
+    print(f"Total (Compute): {total_compute}")
+    print(f"Mean (Compute): {mean_compute}")
+    print(f"Total (Overall): {total}")
+    print(f"Mean (Overall): {mean}")
+
+
 def generate_all_pi_bills(paths, quarter_start_iso, out_dir):
     """Loop through all PIs and save a bill for each.
 
@@ -921,4 +962,13 @@ if __name__ == "__main__":
         ],
         args.quarter_start,
         args.out_dir,
+    )
+    summarize_all_pi_bills(
+        [
+            args.pi_form,
+            args.storage_update_form,
+            args.user_form,
+            args.user_update_form,
+        ],
+        args.quarter_start,
     )
