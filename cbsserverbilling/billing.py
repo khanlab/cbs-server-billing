@@ -504,12 +504,10 @@ class PowerUsersRecord:
         ]
         out_list = []
         for name in out_df:
-            is_power_user, user_start, user_end = self.describe_user(
-                name, start_date, end_date
-            )
-            if not is_power_user:
-                continue
-            out_list.append((name, user_start, user_end))
+            for term in self.describe_user(name, start_date, end_date):
+                if not term[0]:
+                    continue
+                out_list.append((name, term[1], term[2]))
 
         return sorted(out_list, key=lambda x: x[1])
 
@@ -527,18 +525,16 @@ class PowerUsersRecord:
 
         Returns
         -------
-        (bool, date or None, date or None)
-            Whether the user was a power user during the power, then if so, the
-            start and end dates of that user's active period.
+        list of (bool, date or None, date or None)
+            Tuples describing whether the user was a power user during each
+            of their terms during the period, then if so, the start and end
+            dates of those terms.
         """
         orig_row = self.power_user_df.loc[
-            self.power_user_df["last_name"] == last_name, :
-        ]
-        orig_dates = [
-            orig_row.loc[:, "start_timestamp"].iloc[0],
-            orig_row.loc[:, "end_timestamp"].iloc[0],
-        ]
-        orig_power_user = orig_row.loc[:, "power_user"].iloc[0]
+            (self.power_user_df["last_name"] == last_name)
+            & (self.power_user_df["start_timestamp"].dt.date <= period_end),
+            :,
+        ].copy()
         relevant_updates = self.power_user_update_df.loc[
             (self.power_user_update_df["last_name"] == last_name)
             & (self.power_user_update_df["timestamp"].dt.date <= period_end)
@@ -548,58 +544,47 @@ class PowerUsersRecord:
             ),
             ["timestamp", "new_end_timestamp", "new_power_user"],
         ]
-        if len(relevant_updates) == 0:
-            if (
-                orig_power_user
-                and (pd.isna(orig_dates[1]) or (orig_dates[1] >= period_start))
-                and (orig_dates[0] < period_end)
-            ):
-                return True, orig_dates[0], orig_dates[1]
-            return False, None, None
-
-        status_updates = relevant_updates.loc[
-            relevant_updates["new_power_user"].notna(),
-            ["timestamp", "new_power_user"],
+        for update in relevant_updates.itertuples():
+            for term in orig_row.itertuples():
+                if (update.timestamp < term.start_timestamp) or (
+                    update.timestamp > term.end_timestamp
+                ):
+                    continue
+                # This update applies to this term
+                if pd.notna(update.new_end_timestamp):
+                    orig_row.loc[
+                        term.Index, "end_timestamp"
+                    ] = update.new_end_timestamp
+                if pd.notna(update.new_power_user):
+                    if update.new_power_user:
+                        orig_row.loc[term.Index, "power_user"] = True
+                        orig_row.loc[
+                            term.Index, "start_timestamp"
+                        ] = update.timestamp
+                    else:
+                        # They stopped being a power user at the update
+                        # timestamp, so update appropriately.
+                        orig_row.loc[
+                            term.Index, "end_timestamp"
+                        ] = update.timestamp
+                        orig_row.loc[term.Index, "power_user"] = True
+                break
+        orig_row = orig_row.loc[
+            orig_row.loc[:, "end_timestamp"].map(
+                lambda x: pd.isna(x) or x >= period_start
+            ),
+            :,
         ]
-        end_date_updates = relevant_updates.loc[
-            relevant_updates["new_end_timestamp"].notna(),
-            ["timestamp", "new_end_timestamp"],
+
+        if len(orig_row) == 0:
+            return [(False, None, None)]
+
+        return [
+            (True, term.start_timestamp, term.end_timestamp)
+            if term.power_user
+            else (False, None, None)
+            for term in orig_row.itertuples()
         ]
-        if len(end_date_updates) > 0:
-            newest_end_date = end_date_updates.loc[
-                end_date_updates["timestamp"].idxmax(), "new_end_timestamp"
-            ]
-        if len(status_updates) > 0:
-            currently_power_user = status_updates.loc[
-                status_updates["timestamp"].idxmax(), "new_power_user"
-            ]
-            status_update_date = status_updates.loc[
-                status_updates["timestamp"].idxmax(), "timestamp"
-            ].date()
-
-        if len(status_updates) == 0:
-            if (
-                orig_power_user
-                and (newest_end_date >= period_start)
-                and (orig_dates[0] < period_end)
-            ):
-                return True, orig_dates[0], newest_end_date
-            return False, None, None
-
-        # Status has changed
-        end_date = (
-            newest_end_date if len(end_date_updates) > 0 else orig_dates[1]
-        )
-        if currently_power_user:
-            start_date = status_update_date
-        else:
-            start_date = orig_dates[0]
-            end_date = min(end_date, status_update_date)
-        if (start_date < period_end) and (
-            pd.isna(end_date) or (end_date > period_start)
-        ):
-            return True, start_date, end_date
-        return False, None, None
 
 
 def load_user_df(user_form_path):
