@@ -173,11 +173,11 @@ class BillingPolicy:
         price_record = []
         first_price_applied = False
         for name, user_start, user_end in power_users:
-            if (not pd.isna(user_end)) and user_end <= get_end_of_period(
+            if (pd.notna(user_end)) and user_end.date() <= get_end_of_period(
                 start_date.year, start_date.month, self.MIN_BILL_USAGE
             ):
                 price = 0
-            elif user_start > get_end_of_period(
+            elif user_start.date() > get_end_of_period(
                 start_date.year,
                 start_date.month,
                 self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
@@ -571,7 +571,7 @@ class PowerUsersRecord:
                 break
         orig_row = orig_row.loc[
             orig_row.loc[:, "end_timestamp"].map(
-                lambda x: pd.isna(x) or x >= period_start
+                lambda x: pd.isna(x) or x.date() >= period_start
             ),
             :,
         ]
