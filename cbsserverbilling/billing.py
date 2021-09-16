@@ -561,7 +561,7 @@ class PowerUsersRecord:
                         orig_row.loc[
                             term.Index, "start_timestamp"
                         ] = update.timestamp
-                    else:
+                    elif term.power_user:
                         # They stopped being a power user at the update
                         # timestamp, so update appropriately.
                         orig_row.loc[
