@@ -107,13 +107,13 @@ def test_billing_policy():
         policy.get_quarterly_storage_price(
             storage_record, "Durian", quarter_start
         )
-        == 12.5
+        == 1 * 50 / 4
     )
     assert (
         policy.get_quarterly_storage_price(
             storage_record, "Banana", quarter_start
         )
-        == 62.5
+        == 15 * 50 / 4
     )
 
     for pi_last_name, expected_total in zip(
@@ -130,7 +130,7 @@ def test_billing_policy():
         ],
         [
             250,
-            62.5 + 250,
+            (15 * 50 / 4) + 250,
             62.5 + 250,
             12.5 + 375,
             25,
