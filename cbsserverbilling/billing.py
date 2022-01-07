@@ -716,7 +716,7 @@ def load_storage_update_df(storage_update_form_path):
             "Email Address": "email",
             "First name": "first_name",
             "Last name": "last_name",
-            "Required storage needs (in TB)": "new_storage",
+            "Additional storage needs (in TB; to be added to existing storage)": "new_storage",
             "Speed code": "speed_code",
             (
                 "Do you need separate access groups for specific projects?  "
