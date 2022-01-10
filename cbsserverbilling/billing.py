@@ -557,24 +557,39 @@ class PowerUsersRecord:
             ),
             :,
         ]
-        for update in relevant_updates.itertuples():
-            if pd.notna(update.new_end_timestamp):
-                if update.timestamp.date() > orig_row["end_timestamp"].date():
-                    orig_row["start_timestamp"] = update.timestamp
-                orig_row["end_timestamp"] = update.new_end_timestamp
-            if pd.notna(update.new_power_user):
-                if update.new_power_user:
-                    orig_row["power_user"] = True
-                    orig_row["start_timestamp"] = update.timestamp
-                elif orig_row["power_user"]:
-                    # They stopped being a power user at the update
-                    # timestamp, so update appropriately.
-                    orig_row["end_timestamp"] = update.timestamp
-                    orig_row["power_user"] = True
+        for update in relevant_updates.sort_values(
+            by=["timestamp"]
+        ).itertuples():
+            if update.timestamp.date() > orig_row["end_timestamp"].date():
+                # New term
+                orig_row["start_timestamp"] = update.timestamp
+                if pd.notna(update.new_end_timestamp):
+                    orig_row["end_timestamp"] = update.new_end_timestamp
+                else:
+                    print("User reinstated with no new end date")
+                if pd.notna(update.new_power_user):
+                    if update.new_power_user:
+                        orig_row["power_user"] = True
+                    else:
+                        orig_row["power_user"] = False
+            else:
+                # Updating existing term.
+                if pd.notna(update.new_end_timestamp):
+                    orig_row["end_timestamp"] = update.new_end_timestamp
+                if pd.notna(update.new_power_user):
+                    if update.new_power_user:
+                        if not orig_row["power_user"]:
+                            # They became a power user with the update
+                            orig_row["power_user"] = True
+                            orig_row["start_timestamp"] = update.timestamp
+                    elif orig_row["power_user"]:
+                        # They stopped being a power user at the update
+                        # timestamp, so update appropriately.
+                        orig_row["end_timestamp"] = update.timestamp
 
         if not (
             pd.isna(orig_row["end_timestamp"])
-            or orig_row["end_timestamp"] >= period_start
+            or orig_row["end_timestamp"].date() >= period_start
         ):
             return [(False, None, None)]
 
