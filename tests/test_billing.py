@@ -45,15 +45,15 @@ def test_load_user_df():
         ],
     ):
         assert actual == expected
-    assert len(user_df.index) == 13
+    assert len(user_df.index) == 14
 
 
 def test_preprocess_forms():
     """Test that `preprocess_forms` correctly assembles the data"""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
     assert len(pi_df.index) == 10
-    assert len(user_df.index) == 23
-    assert user_df.loc[13, "last_name"] == "Apple"
+    assert len(user_df.index) == 24
+    assert user_df.loc[14, "last_name"] == "Apple"
 
 
 def test_is_billable_pi():
@@ -96,6 +96,7 @@ def test_billing_policy():
         "Orange": 0,
         "Pomegranate": 500 / 4,
         "Quince": 0,
+        "Xigua": 500 / 4
     }
     for last_name, _, _, price in policy.enumerate_quarterly_power_user_prices(
         power_users_record, "Mango", quarter_start
@@ -136,7 +137,7 @@ def test_billing_policy():
             25,
             37.5 + 250,
             50 + 375,
-            125 + 500,
+            125 + 625,
             50 + 375,
         ],
     ):

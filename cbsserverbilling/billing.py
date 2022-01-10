@@ -535,6 +535,11 @@ class PowerUsersRecord:
             & (self.power_user_df["start_timestamp"].dt.date <= period_end),
             :,
         ].copy()
+        if len(orig_row) == 0:
+            return [(False, None, None)]
+
+        # Only want the most recent term
+        orig_row = orig_row.loc[orig_row["start_timestamp"].idxmax()]
         relevant_updates = self.power_user_update_df.loc[
             (self.power_user_update_df["last_name"] == last_name)
             & (self.power_user_update_df["timestamp"].dt.date <= period_end)
@@ -544,46 +549,39 @@ class PowerUsersRecord:
             ),
             ["timestamp", "new_end_timestamp", "new_power_user"],
         ]
-        for update in relevant_updates.itertuples():
-            for term in orig_row.itertuples():
-                if (update.timestamp < term.start_timestamp) or (
-                    update.timestamp > term.end_timestamp
-                ):
-                    continue
-                # This update applies to this term
-                if pd.notna(update.new_end_timestamp):
-                    orig_row.loc[
-                        term.Index, "end_timestamp"
-                    ] = update.new_end_timestamp
-                if pd.notna(update.new_power_user):
-                    if update.new_power_user:
-                        orig_row.loc[term.Index, "power_user"] = True
-                        orig_row.loc[
-                            term.Index, "start_timestamp"
-                        ] = update.timestamp
-                    elif term.power_user:
-                        # They stopped being a power user at the update
-                        # timestamp, so update appropriately.
-                        orig_row.loc[
-                            term.Index, "end_timestamp"
-                        ] = update.timestamp
-                        orig_row.loc[term.Index, "power_user"] = True
-                break
-        orig_row = orig_row.loc[
-            orig_row.loc[:, "end_timestamp"].map(
-                lambda x: pd.isna(x) or x.date() >= period_start
+        # Only want updates after this term started
+        relevant_updates = relevant_updates.loc[
+            (
+                relevant_updates["timestamp"].dt.date
+                >= orig_row["start_timestamp"].date()
             ),
             :,
         ]
+        for update in relevant_updates.itertuples():
+            if pd.notna(update.new_end_timestamp):
+                if update.timestamp.date() > orig_row["end_timestamp"].date():
+                    orig_row["start_timestamp"] = update.timestamp
+                orig_row["end_timestamp"] = update.new_end_timestamp
+            if pd.notna(update.new_power_user):
+                if update.new_power_user:
+                    orig_row["power_user"] = True
+                    orig_row["start_timestamp"] = update.timestamp
+                elif orig_row["power_user"]:
+                    # They stopped being a power user at the update
+                    # timestamp, so update appropriately.
+                    orig_row["end_timestamp"] = update.timestamp
+                    orig_row["power_user"] = True
 
-        if len(orig_row) == 0:
+        if not (
+            pd.isna(orig_row["end_timestamp"])
+            or orig_row["end_timestamp"] >= period_start
+        ):
             return [(False, None, None)]
 
         return [
-            (True, term.start_timestamp, term.end_timestamp)
-            if term.power_user
+            (True, orig_row["start_timestamp"], orig_row["end_timestamp"])
+            if orig_row["power_user"]
             else (False, None, None)
-            for term in orig_row.itertuples()
         ]
 
 
