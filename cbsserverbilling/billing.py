@@ -273,6 +273,9 @@ class BillingPolicy:
             "end": end_date.strftime("%b %d, %Y"),
             "bill": datetime.date.today().strftime("%b %d, %Y"),
         }
+        subtotal = self.get_quarterly_storage_price(
+            storage_record, pi_last_name, quarter_start
+        )
         storage = {
             "timestamp": (
                 storage_record.get_storage_start(pi_last_name).strftime(
@@ -282,12 +285,8 @@ class BillingPolicy:
             "amount": storage_record.get_storage_amount(
                 pi_last_name, end_date
             ),
-            "price": "{:.2f}".format(STORAGE_PRICE),
-            "subtotal": "{:.2f}".format(
-                self.get_quarterly_storage_price(
-                    storage_record, pi_last_name, quarter_start
-                )
-            ),
+            "price": f"{STORAGE_PRICE:.2f}",
+            "subtotal": f"{subtotal:.2f}",
         }
         power_users = [
             {
@@ -298,23 +297,21 @@ class BillingPolicy:
                     if pd.isna(record[2])
                     else record[2].strftime("%b %d, %Y")
                 ),
-                "price": "{:.2f}".format(record[3] * 4),
-                "subtotal": "{:.2f}".format(record[3]),
+                "price": f"{record[3] * 4:.2f}",
+                "subtotal": f"{record[3]:.2f}",
             }
             for record in self.enumerate_quarterly_power_user_prices(
                 power_users_record, pi_last_name, quarter_start
             )
         ]
-        power_users_subtotal = "{:.2f}".format(
-            self.get_quarterly_power_user_price(
-                power_users_record, pi_last_name, quarter_start
-            )
+        power_users_subtotal = self.get_quarterly_power_user_price(
+            power_users_record, pi_last_name, quarter_start
         )
-        total = "{:.2f}".format(
-            self.get_quarterly_total_price(
-                storage_record, power_users_record, pi_last_name, quarter_start
-            )
+        power_users_subtotal = f"{power_users_subtotal:.2f}"
+        total = self.get_quarterly_total_price(
+            storage_record, power_users_record, pi_last_name, quarter_start
         )
+        total = f"{total:.2f}"
         speed_code = storage_record.get_speed_code(pi_last_name)
 
         template = env.get_template(BILL_TEMPLATE)
@@ -873,9 +870,7 @@ def generate_all_pi_bills(paths, quarter_start_iso, out_dir):
     for pi_last_name in pi_df.loc[:, "last_name"]:
         out_file = os.path.join(
             out_dir,
-            "pi-{}_quarter-{}_bill.tex".format(
-                pi_last_name, quarter_start_iso
-            ),
+            f"pi-{pi_last_name}_quarter-{quarter_start_iso}_bill.tex",
         )
         generate_pi_bill(
             [pi_path, storage_update_path, user_path, user_update_path],
