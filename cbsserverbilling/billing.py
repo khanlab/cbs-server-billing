@@ -915,7 +915,7 @@ def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
         storage_record, power_users_record, pi_last_name, quarter_start
     )
     if out_file is not None:
-        with open(out_file, "w") as writable:
+        with open(out_file, "w", encoding="utf-8") as writable:
             writable.write(bill_tex)
         return
 
