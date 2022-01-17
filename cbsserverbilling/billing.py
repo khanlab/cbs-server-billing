@@ -55,6 +55,38 @@ def get_end_of_period(start_year, start_month, num_months):
     return datetime.date(year, month, calendar.monthrange(year, month)[-1])
 
 
+def gen_new_term_from_row(orig_row, update):
+    """Update a user's entry to consider a new term."""
+    orig_row["start_timestamp"] = update.timestamp
+    if pd.notna(update.new_end_timestamp):
+        orig_row["end_timestamp"] = update.new_end_timestamp
+    else:
+        print("User reinstated with no new end date")
+    if pd.notna(update.new_power_user):
+        if update.new_power_user:
+            orig_row["power_user"] = True
+        else:
+            orig_row["power_user"] = False
+    return orig_row
+
+
+def update_term_from_row(orig_row, update):
+    """Update a user's existing term."""
+    if pd.notna(update.new_end_timestamp):
+        orig_row["end_timestamp"] = update.new_end_timestamp
+    if pd.notna(update.new_power_user):
+        if update.new_power_user:
+            if not orig_row["power_user"]:
+                # They became a power user with the update
+                orig_row["power_user"] = True
+                orig_row["start_timestamp"] = update.timestamp
+        elif orig_row["power_user"]:
+            # They stopped being a power user at the update
+            # timestamp, so update appropriately.
+            orig_row["end_timestamp"] = update.timestamp
+    return orig_row
+
+
 class BillingPolicy:
     """Class containing all billing policy information."""
 
@@ -558,31 +590,9 @@ class PowerUsersRecord:
             by=["timestamp"]
         ).itertuples():
             if update.timestamp.date() > orig_row["end_timestamp"].date():
-                # New term
-                orig_row["start_timestamp"] = update.timestamp
-                if pd.notna(update.new_end_timestamp):
-                    orig_row["end_timestamp"] = update.new_end_timestamp
-                else:
-                    print("User reinstated with no new end date")
-                if pd.notna(update.new_power_user):
-                    if update.new_power_user:
-                        orig_row["power_user"] = True
-                    else:
-                        orig_row["power_user"] = False
+                orig_row = gen_new_term_from_row(orig_row, update)
             else:
-                # Updating existing term.
-                if pd.notna(update.new_end_timestamp):
-                    orig_row["end_timestamp"] = update.new_end_timestamp
-                if pd.notna(update.new_power_user):
-                    if update.new_power_user:
-                        if not orig_row["power_user"]:
-                            # They became a power user with the update
-                            orig_row["power_user"] = True
-                            orig_row["start_timestamp"] = update.timestamp
-                    elif orig_row["power_user"]:
-                        # They stopped being a power user at the update
-                        # timestamp, so update appropriately.
-                        orig_row["end_timestamp"] = update.timestamp
+                orig_row = update_term_from_row(orig_row, update)
 
         if not (
             pd.isna(orig_row["end_timestamp"])
@@ -726,7 +736,10 @@ def load_storage_update_df(storage_update_form_path):
             "Email Address": "email",
             "First name": "first_name",
             "Last name": "last_name",
-            "Additional storage needs (in TB; to be added to existing storage)": "new_storage",
+            (
+                "Additional storage needs "
+                "(in TB; to be added to existing storage)"
+            ): "new_storage",
             "Speed code": "speed_code",
             (
                 "Do you need separate access groups for specific projects?  "
@@ -811,6 +824,7 @@ def preprocess_forms(pi_path, user_path):
 
 
 def summarize_all_pi_bills(paths, quarter_start_iso):
+    """Print a summary of all PI bills."""
     pi_df, user_df = preprocess_forms(paths[0], paths[2])
     storage_update_df = load_storage_update_df(paths[1])
     user_update_df = load_user_update_df(paths[3])
@@ -837,18 +851,15 @@ def summarize_all_pi_bills(paths, quarter_start_iso):
     ]
 
     total_storage = sum([pi_bill["storage"] for pi_bill in summary])
-    mean_storage = total_storage / len(summary)
     total_compute = sum([pi_bill["compute"] for pi_bill in summary])
-    mean_compute = total_compute / len(summary)
     total = total_storage + total_compute
-    mean = total / len(summary)
 
     print(f"Total (Storage): {total_storage}")
-    print(f"Mean (Storage): {mean_storage}")
+    print(f"Mean (Storage): {total_storage / len(summary)}")
     print(f"Total (Compute): {total_compute}")
-    print(f"Mean (Compute): {mean_compute}")
+    print(f"Mean (Compute): {total_compute / len(summary)}")
     print(f"Total (Overall): {total}")
-    print(f"Mean (Overall): {mean}")
+    print(f"Mean (Overall): {total / len(summary)}")
 
 
 def generate_all_pi_bills(paths, quarter_start_iso, out_dir):
