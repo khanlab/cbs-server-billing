@@ -344,7 +344,9 @@ class BillingPolicy:
             storage_record, power_users_record, pi_last_name, quarter_start
         )
         total = f"{total:.2f}"
-        speed_code = storage_record.get_speed_code(pi_last_name, end_date)
+        speed_code = storage_record.get_speed_code(
+            pi_last_name, datetime.date.today()
+        )
 
         template = env.get_template(BILL_TEMPLATE)
         return template.render(
