@@ -344,7 +344,7 @@ class BillingPolicy:
             storage_record, power_users_record, pi_last_name, quarter_start
         )
         total = f"{total:.2f}"
-        speed_code = storage_record.get_speed_code(pi_last_name)
+        speed_code = storage_record.get_speed_code(pi_last_name, end_date)
 
         template = env.get_template(BILL_TEMPLATE)
         return template.render(
@@ -470,22 +470,36 @@ class StorageRecord:
             total_storage += pi_storage_updates.loc[:, "new_storage"].sum()
         return total_storage
 
-    def get_speed_code(self, pi_last_name):
-        """Get the speed code associated with this PI.
+    def get_speed_code(self, pi_last_name, date):
+        """Get the speed code associated with this PI on a date.
 
         Parameters
         ----------
         pi_last_name : str
             Last name of the PI.
+        date: date
+            Date on which to check the speed code.
 
         Returns
         -------
         str
             Speed code associated with this PI.
         """
-        return self.storage_df.loc[
-            self.storage_df["last_name"] == pi_last_name, "speed_code"
-        ].iloc[0]
+        speed_code_updates = self.storage_update_df.loc[
+            (self.storage_update_df["last_name"] == pi_last_name)
+            & (pd.notna(self.storage_update_df["speed_code"]))
+            & (self.storage_update_df["timestamp"].dt.date <= date),
+            :,
+        ]
+        return (
+            self.storage_df.loc[
+                self.storage_df["last_name"] == pi_last_name, "speed_code"
+            ].iloc[0]
+            if len(speed_code_updates) == 0
+            else speed_code_updates.loc[
+                speed_code_updates["timestamp"].idxmax(), "speed_code"
+            ]
+        )
 
 
 class PowerUsersRecord:

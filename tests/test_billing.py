@@ -76,6 +76,19 @@ def test_is_billable_pi():
     assert policy.is_billable_pi(storage_record, "Jackfruit", quarter_start)
 
 
+def test_speed_code():
+    """Test that the correct speed code is returned."""
+    pi_df, _ = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
+    storage_update_df = billing.load_storage_update_df(
+        MOCK_STORAGE_UPDATE_FORM
+    )
+    storage_record = billing.StorageRecord(pi_df, storage_update_df)
+    date = datetime.date(2021, 1, 31)
+
+    assert storage_record.get_speed_code("Durian", date) == "DDDD"
+    assert storage_record.get_speed_code("Banana", date) == "BBBC"
+
+
 def test_billing_policy():
     """Test that `BillingPolicy` works properly for all PIs."""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
@@ -96,7 +109,7 @@ def test_billing_policy():
         "Orange": 0,
         "Pomegranate": 500 / 4,
         "Quince": 0,
-        "Xigua": 500 / 4
+        "Xigua": 500 / 4,
     }
     for last_name, _, _, price in policy.enumerate_quarterly_power_user_prices(
         power_users_record, "Mango", quarter_start
