@@ -521,6 +521,64 @@ class PowerUsersRecord:
         self.power_user_df = power_user_df
         self.power_user_update_df = power_user_update_df
 
+    def enumerate_all_users(self, start_date, end_date):
+        """Generate a list of all users with an active account.
+
+        Parameters
+        ----------
+        start_date : date
+            First date to consider.
+        end_date : date
+            Last date to consider.
+
+        Returns
+        -------
+        list of tuple
+            A tuple for each user who was active on any day in the given
+            range. The tuple contains the user's name, start date, and end
+            date.
+        """
+        user_df = self.power_user_df.loc[
+            self.power_user_df["start_timestamp"].dt.date < end_date,
+            ["last_name", "start_timestamp", "end_timestamp"],
+        ]
+        update_df = self.power_user_update_df.loc[
+            (self.power_user_update_df["timestamp"].dt.date < end_date)
+            & (pd.notna(self.power_user_update_df["new_end_timestamp"])),
+            ["last_name", "timestamp", "new_end_timestamp"],
+        ]
+        users = []
+        for user in user_df.itertuples():
+            user_rows = user_df.loc[user_df["last_name"] == user.last_name, :]
+            user_row = user_rows.loc[user_rows["start_timestamp"].idxmax()]
+            if user_row["start_timestamp"] != user.start_timestamp:
+                continue
+            updates = update_df.loc[
+                (update_df["last_name"] == user.last_name)
+                & (update_df["timestamp"] > user.start_timestamp),
+                :,
+            ]
+            end_timestamp = (
+                updates.loc[updates["timestamp"].idxmax()][
+                    "new_end_timestamp"
+                ].date()
+                if len(updates) > 0
+                else (
+                    user.end_timestamp.date()
+                    if pd.notna(user.end_timestamp)
+                    else None
+                )
+            )
+            if (end_timestamp is None) or (end_timestamp > start_date):
+                users.append(
+                    (
+                        user.last_name,
+                        user.start_timestamp.date(),
+                        end_timestamp,
+                    )
+                )
+        return users
+
     def enumerate_power_users(self, pi_last_name, start_date, end_date):
         """Generate a list of power users associated with this PI.
 
