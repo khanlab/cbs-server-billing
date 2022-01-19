@@ -89,6 +89,43 @@ def test_speed_code():
     assert storage_record.get_speed_code("Banana", date) == "BBBC"
 
 
+def test_enumerate_all_users():
+    """Test that the correct speed code is returned."""
+    _, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
+    user_update_df = billing.load_user_update_df(MOCK_USER_UPDATE_FORM)
+    power_users_record = billing.PowerUsersRecord(user_df, user_update_df)
+    date = datetime.date(2021, 1, 31)
+
+    users = power_users_record.enumerate_all_users(
+        datetime.date(2020, 12, 16), date
+    )
+    assert {user[0] for user in users} == {
+        "Elderberry",
+        "Fruit",
+        "Grape",
+        "Honeydew",
+        "Lemon",
+        "Nectarine",
+        "Orange",
+        "Pomegranate",
+        "Quince",
+        "Strawberry",
+        "Tomato",
+        "Vanilla",
+        "Xigua",
+        "Apple",
+        "Banana",
+        "Cherry",
+        "Durian",
+        "Ice Cream",
+        "Jackfruit",
+        "Kiwi",
+        "Mango",
+        "Raspberry",
+        "Watermelon",
+    }
+
+
 def test_billing_policy():
     """Test that `BillingPolicy` works properly for all PIs."""
     pi_df, user_df = billing.preprocess_forms(MOCK_PI_FORM, MOCK_USER_FORM)
@@ -165,7 +202,9 @@ def test_billing_policy():
 
 def test_generate_pi_bill(capsys, tmp_path):
     """Test that `generate_pi_bill` populates a bill correctly."""
-    with open("tests/resources/kiwi_expected.tex", "r") as expected_file:
+    with open(
+        "tests/resources/kiwi_expected.tex", "r", encoding="utf-8"
+    ) as expected_file:
         expected_bill = expected_file.read()
 
     # Check account cancelled before quarter cutoff
@@ -214,7 +253,7 @@ def test_generate_pi_bill(capsys, tmp_path):
         out_file=tmp_path / "test.txt",
     )
 
-    with open(tmp_path / "test.txt", "r") as report_file:
+    with open(tmp_path / "test.txt", "r", encoding="utf-8") as report_file:
         bill = report_file.read()
     for actual_line, expected_line in zip(
         bill.split("\n\n"), expected_bill.split("\n\n")
