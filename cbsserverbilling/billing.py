@@ -808,8 +808,8 @@ def load_storage_update_df(storage_update_form_path):
         columns={
             "Timestamp": "timestamp",
             "Email Address": "email",
-            "First name": "first_name",
-            "Last name": "last_name",
+            "First Name": "first_name",
+            "Last Name": "last_name",
             (
                 "Additional storage needs "
                 "(in TB; to be added to existing storage)"
