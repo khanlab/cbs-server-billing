@@ -602,6 +602,7 @@ class PowerUsersRecord:
             self.power_user_df["pi_last_name"] == pi_last_name,
             ["last_name", "start_timestamp"],
         ]
+        print(out_df)
         out_df = out_df.loc[
             out_df["start_timestamp"].dt.date <= end_date, "last_name"
         ]
@@ -633,6 +634,7 @@ class PowerUsersRecord:
             of their terms during the period, then if so, the start and end
             dates of those terms.
         """
+        print(f"Checking user {last_name}")
         orig_row = self.power_user_df.loc[
             (self.power_user_df["last_name"] == last_name)
             & (self.power_user_df["start_timestamp"].dt.date <= period_end),
@@ -698,17 +700,18 @@ def load_user_df(user_form_path):
     user_df = pd.read_excel(user_form_path)
     user_df = user_df.rename(
         columns={
-            "Completion Time": "start_timestamp",
+            "Completion time": "start_timestamp",
             "Email": "email",
             "First name": "first_name",
             "Last name": "last_name",
-            "PI last Name": "pi_last_name",
+            "PI last name": "pi_last_name",
             "Contract end date": "end_timestamp",
             (
                 "Do you need your account to be a Power User account"
             ): "power_user",
         }
     )
+    print(user_df.loc[:, ["last_name", "start_timestamp"]])
     user_df = user_df.assign(
         power_user=user_df["power_user"].str.strip() == "Yes"
     )
@@ -806,12 +809,12 @@ def load_storage_update_df(storage_update_form_path):
         columns={
             "Completion time": "timestamp",
             "Email": "email",
-            "First Name": "first_name",
-            "Last Name": "last_name",
+            "First name": "first_name",
+            "Last name": "last_name",
             (
                 "Additional storage needs (in TB)"
             ): "new_storage",
-            "Speed code": "speed_code",
+            "New speed code": "speed_code",
             (
                 "New secure project spaces names"
             ): "access_groups",
@@ -949,6 +952,7 @@ def generate_all_pi_bills(paths, quarter_start_iso, out_dir):
     pi_df, _ = preprocess_forms(pi_path, user_path)
 
     for pi_last_name in pi_df.loc[:, "last_name"]:
+        print(f"Doing {pi_last_name}")
         out_file = os.path.join(
             out_dir,
             f"pi-{pi_last_name}_quarter-{quarter_start_iso}_bill.tex",
@@ -981,6 +985,7 @@ def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
     pi_df, user_df = preprocess_forms(paths[0], paths[2])
     storage_update_df = load_storage_update_df(paths[1])
     user_update_df = load_user_update_df(paths[3])
+
 
     quarter_start = datetime.date.fromisoformat(quarter)
 
