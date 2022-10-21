@@ -128,16 +128,46 @@ class BillingPolicy:
             start_date.month,
             self.MIN_BILL_USAGE,
         )
-        account_close_date = storage_record.get_pi_account_close_date(
-            pi_last_name
-        )
+        account_close_date = storage_record.get_pi_account_close_date(pi_last_name)
         if pd.isna(account_close_date) or (account_close_date > cutoff_date):
             return True
         return False
 
-    def get_quarterly_storage_price(
-        self, storage_record, pi_last_name, start_date
-    ):
+    def get_quarterly_storage_amount(self, storage_record, pi_last_name, start_date):
+        """Calculate a quarter's storage usage for one PI.
+
+        Parameters
+        ----------
+        storage_record : StorageRecord
+            Record with all the storage information.
+        pi_last_name : str
+            Last name of the PI to query.
+        start_date : date
+            Date in the first month of the quarter.
+
+        Returns
+        -------
+        float
+            Total storage used by the PI in this quarter
+        """
+        cutoff_date = get_end_of_period(
+            start_date.year,
+            start_date.month,
+            self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
+        )
+        if storage_record.get_storage_start(pi_last_name) > cutoff_date:
+            return 0
+        return min(
+            storage_record.get_storage_amount(pi_last_name, cutoff_date),
+            storage_record.get_storage_amount(
+                pi_last_name,
+                get_end_of_period(
+                    start_date.year, start_date.month, self.MIN_BILL_USAGE
+                ),
+            ),
+        )
+
+    def get_quarterly_storage_price(self, storage_record, pi_last_name, start_date):
         """Calculate a quarter's storage price for one PI.
 
         Parameters
@@ -154,23 +184,8 @@ class BillingPolicy:
         float
             Total storage price for the PI for the quarter.
         """
-        cutoff_date = get_end_of_period(
-            start_date.year,
-            start_date.month,
-            self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
-        )
-        if storage_record.get_storage_start(pi_last_name) > cutoff_date:
-            return 0
         return (
-            min(
-                storage_record.get_storage_amount(pi_last_name, cutoff_date),
-                storage_record.get_storage_amount(
-                    pi_last_name,
-                    get_end_of_period(
-                        start_date.year, start_date.month, self.MIN_BILL_USAGE
-                    ),
-                ),
-            )
+            self.get_quarterly_storage_amount(storage_record, pi_last_name, start_date)
             * self.STORAGE_PRICE
             * 0.25
         )
@@ -245,12 +260,10 @@ class BillingPolicy:
         """
 
         return sum(
-            [
-                user[3]
-                for user in self.enumerate_quarterly_power_user_prices(
-                    power_users_record, pi_last_name, quarter_start
-                )
-            ]
+            user[3]
+            for user in self.enumerate_quarterly_power_user_prices(
+                power_users_record, pi_last_name, quarter_start
+            )
         )
 
     def get_quarterly_total_price(
@@ -310,13 +323,9 @@ class BillingPolicy:
         )
         storage = {
             "timestamp": (
-                storage_record.get_storage_start(pi_last_name).strftime(
-                    "%b %d, %Y"
-                )
+                storage_record.get_storage_start(pi_last_name).strftime("%b %d, %Y")
             ),
-            "amount": storage_record.get_storage_amount(
-                pi_last_name, end_date
-            ),
+            "amount": storage_record.get_storage_amount(pi_last_name, end_date),
             "price": f"{STORAGE_PRICE:.2f}",
             "subtotal": f"{subtotal:.2f}",
         }
@@ -325,9 +334,7 @@ class BillingPolicy:
                 "last_name": record[0],
                 "start_date": record[1].strftime("%b %d, %Y"),
                 "end_date": (
-                    "N/A"
-                    if pd.isna(record[2])
-                    else record[2].strftime("%b %d, %Y")
+                    "N/A" if pd.isna(record[2]) else record[2].strftime("%b %d, %Y")
                 ),
                 "price": f"{record[3] * 4:.2f}",
                 "subtotal": f"{record[3]:.2f}",
@@ -344,9 +351,7 @@ class BillingPolicy:
             storage_record, power_users_record, pi_last_name, quarter_start
         )
         total = f"{total:.2f}"
-        speed_code = storage_record.get_speed_code(
-            pi_last_name, datetime.date.today()
-        )
+        speed_code = storage_record.get_speed_code(pi_last_name, datetime.date.today())
 
         template = env.get_template(BILL_TEMPLATE)
         return template.render(
@@ -559,14 +564,10 @@ class PowerUsersRecord:
                 :,
             ]
             end_timestamp = (
-                updates.loc[updates["timestamp"].idxmax()][
-                    "new_end_timestamp"
-                ].date()
+                updates.loc[updates["timestamp"].idxmax()]["new_end_timestamp"].date()
                 if len(updates) > 0
                 else (
-                    user.end_timestamp.date()
-                    if pd.notna(user.end_timestamp)
-                    else None
+                    user.end_timestamp.date() if pd.notna(user.end_timestamp) else None
                 )
             )
             if (end_timestamp is None) or (end_timestamp > start_date):
@@ -602,10 +603,7 @@ class PowerUsersRecord:
             self.power_user_df["pi_last_name"] == pi_last_name,
             ["last_name", "start_timestamp"],
         ]
-        print(out_df)
-        out_df = out_df.loc[
-            out_df["start_timestamp"].dt.date <= end_date, "last_name"
-        ]
+        out_df = out_df.loc[out_df["start_timestamp"].dt.date <= end_date, "last_name"]
         out_list = []
         for name in out_df:
             for term in self.describe_user(name, start_date, end_date):
@@ -634,7 +632,6 @@ class PowerUsersRecord:
             of their terms during the period, then if so, the start and end
             dates of those terms.
         """
-        print(f"Checking user {last_name}")
         orig_row = self.power_user_df.loc[
             (self.power_user_df["last_name"] == last_name)
             & (self.power_user_df["start_timestamp"].dt.date <= period_end),
@@ -662,9 +659,7 @@ class PowerUsersRecord:
             ),
             :,
         ]
-        for update in relevant_updates.sort_values(
-            by=["timestamp"]
-        ).itertuples():
+        for update in relevant_updates.sort_values(by=["timestamp"]).itertuples():
             if update.timestamp.date() > orig_row["end_timestamp"].date():
                 orig_row = gen_new_term_from_row(orig_row, update)
             else:
@@ -697,7 +692,7 @@ def load_user_df(user_form_path):
         A data frame with column names adjusted to be more usable, and the
         power user column cast to a boolean instead of a string.
     """
-    user_df = pd.read_excel(user_form_path)
+    user_df = pd.read_excel(user_form_path, engine="openpyxl")
     user_df = user_df.rename(
         columns={
             "Completion time": "start_timestamp",
@@ -706,15 +701,10 @@ def load_user_df(user_form_path):
             "Last name": "last_name",
             "PI last name": "pi_last_name",
             "Contract end date": "end_timestamp",
-            (
-                "Do you need your account to be a Power User account"
-            ): "power_user",
+            ("Do you need your account to be a Power User account"): "power_user",
         }
     )
-    print(user_df.loc[:, ["last_name", "start_timestamp"]])
-    user_df = user_df.assign(
-        power_user=user_df["power_user"].str.strip() == "Yes"
-    )
+    user_df = user_df.assign(power_user=user_df["power_user"].str.strip() == "Yes")
     return user_df
 
 
@@ -731,7 +721,7 @@ def load_user_update_df(user_update_form_path):
     DataFrame
         Dataframe containing updates to user account specifications.
     """
-    user_update_df = pd.read_excel(user_update_form_path)
+    user_update_df = pd.read_excel(user_update_form_path, engine="openpyxl")
     user_update_df = user_update_df.rename(
         columns={
             "Completion time": "timestamp",
@@ -739,17 +729,11 @@ def load_user_update_df(user_update_form_path):
             "First name": "first_name",
             "Last name": "last_name",
             "PI Last name (e.g., Smith)": "pi_last_name",
-            (
-                "Request access to additional datashare "
-            ): "additional_datashare",
-            (
-                "Update contract end date"
-            ): "new_end_timestamp",
+            ("Request access to additional datashare "): "additional_datashare",
+            ("Update contract end date"): "new_end_timestamp",
             "Change account type": "new_power_user",
             "List projects for which you need security access": "new_projects",
-            (
-                "Consent"
-            ): "agree",
+            ("Consent"): "agree",
             "Please feel free to leave any feedback": "feedback",
         }
     )
@@ -771,7 +755,7 @@ def load_pi_df(pi_form_path):
         A dataframe with column names adjusted to be more usable, and the PI
         power user column cast to a boolean instead of a string.
     """
-    pi_df = pd.read_excel(pi_form_path)
+    pi_df = pd.read_excel(pi_form_path, engine="openpyxl")
     pi_df = pi_df.rename(
         columns={
             "Completion time": "start_timestamp",
@@ -804,31 +788,24 @@ def load_storage_update_df(storage_update_form_path):
     DataFrame
         Dataframe containing updates to PI storage needs.
     """
-    storage_update_df = pd.read_excel(storage_update_form_path)
+    storage_update_df = pd.read_excel(storage_update_form_path, engine="openpyxl")
     storage_update_df = storage_update_df.rename(
         columns={
             "Completion time": "timestamp",
             "Email": "email",
             "First name": "first_name",
             "Last name": "last_name",
-            (
-                "Additional storage needs (in TB)"
-            ): "new_storage",
+            ("Additional storage needs (in TB)"): "new_storage",
             "New speed code": "speed_code",
-            (
-                "New secure project spaces names"
-            ): "access_groups",
-            (
-                "Consent"
-            ): "agree",
+            ("New secure project spaces names"): "access_groups",
+            ("Consent"): "agree",
             "Please feel free to leave any feedback": "feedback",
             "Account closure2": "account_closed",
         }
     )
     storage_update_df = storage_update_df.assign(
         agree=storage_update_df["agree"].str.strip() == "Yes",
-        account_closed=storage_update_df["account_closed"].str.strip()
-        == "Yes",
+        account_closed=storage_update_df["account_closed"].str.strip() == "Yes",
     )
     return storage_update_df
 
@@ -896,7 +873,7 @@ def preprocess_forms(pi_path, user_path):
     return (pi_df, user_df)
 
 
-def summarize_all_pi_bills(paths, quarter_start_iso):
+def summarize_all_pi_bills(paths, quarter_start_iso, out_file):
     """Print a summary of all PI bills."""
     pi_df, user_df = preprocess_forms(paths[0], paths[2])
     storage_update_df = load_storage_update_df(paths[1])
@@ -912,19 +889,47 @@ def summarize_all_pi_bills(paths, quarter_start_iso):
     summary = [
         {
             "pi": pi_last_name,
-            "storage": policy.get_quarterly_storage_price(
+            "storage_amount": policy.get_quarterly_storage_amount(
                 storage_record, pi_last_name, quarter_start
             ),
-            "compute": policy.get_quarterly_power_user_price(
+            "storage_price": policy.get_quarterly_storage_price(
+                storage_record, pi_last_name, quarter_start
+            ),
+            "billed_power_users": len(
+                [
+                    user
+                    for user in policy.enumerate_quarterly_power_user_prices(
+                        power_users_record, pi_last_name, quarter_start
+                    )
+                    if user[3] > 0
+                ]
+            ),
+            "compute_price": policy.get_quarterly_power_user_price(
                 power_users_record, pi_last_name, quarter_start
+            ),
+            "speed_code": storage_record.get_speed_code(
+                pi_last_name, datetime.date.today()
             ),
         }
         for pi_last_name in pi_df.loc[:, "last_name"]
         if policy.is_billable_pi(storage_record, pi_last_name, quarter_start)
     ]
+    pd.DataFrame(
+        {
+            "pi": [pi["pi"] for pi in summary],
+            "storage_amount": [pi["storage_amount"] for pi in summary],
+            "storage_price": [pi["storage_price"] for pi in summary],
+            "billed_power_users": [pi["billed_power_users"] for pi in summary],
+            "compute_price": [pi["compute_price"] for pi in summary],
+            "total_price": [
+                pi["storage_price"] + pi["compute_price"] for pi in summary
+            ],
+            "speed_code": [pi["speed_code"] for pi in summary],
+        }
+    ).to_excel(out_file, index=False, engine="openpyxl")
 
-    total_storage = sum([pi_bill["storage"] for pi_bill in summary])
-    total_compute = sum([pi_bill["compute"] for pi_bill in summary])
+    total_storage = sum(pi_bill["storage_price"] for pi_bill in summary)
+    total_compute = sum(pi_bill["compute_price"] for pi_bill in summary)
     total = total_storage + total_compute
 
     print(f"Total (Storage): {total_storage}")
@@ -952,7 +957,6 @@ def generate_all_pi_bills(paths, quarter_start_iso, out_dir):
     pi_df, _ = preprocess_forms(pi_path, user_path)
 
     for pi_last_name in pi_df.loc[:, "last_name"]:
-        print(f"Doing {pi_last_name}")
         out_file = os.path.join(
             out_dir,
             f"pi-{pi_last_name}_quarter-{quarter_start_iso}_bill.tex",
@@ -986,7 +990,6 @@ def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
     storage_update_df = load_storage_update_df(paths[1])
     user_update_df = load_user_update_df(paths[3])
 
-
     quarter_start = datetime.date.fromisoformat(quarter)
 
     storage_record = StorageRecord(pi_df, storage_update_df)
@@ -1005,22 +1008,16 @@ def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
             writable.write(bill_tex)
         return
 
-    print(bill_tex, end="")
-
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Process CBS Server billing data."
-    )
+    parser = argparse.ArgumentParser(description="Process CBS Server billing data.")
     parser.add_argument("pi_form", type=str, help="path to the PI form data")
     parser.add_argument(
         "storage_update_form",
         type=str,
         help="path to the storage update form data",
     )
-    parser.add_argument(
-        "user_form", type=str, help="path to the user form data"
-    )
+    parser.add_argument("user_form", type=str, help="path to the user form data")
     parser.add_argument(
         "user_update_form", type=str, help="path to the user update form data"
     )
@@ -1050,4 +1047,5 @@ if __name__ == "__main__":
             args.user_update_form,
         ],
         args.quarter_start,
+        f"{args.out_dir}/summary_{args.quarter_start}.xlsx",
     )
