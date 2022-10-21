@@ -602,6 +602,7 @@ class PowerUsersRecord:
             self.power_user_df["pi_last_name"] == pi_last_name,
             ["last_name", "start_timestamp"],
         ]
+        print(out_df)
         out_df = out_df.loc[
             out_df["start_timestamp"].dt.date <= end_date, "last_name"
         ]
@@ -633,6 +634,7 @@ class PowerUsersRecord:
             of their terms during the period, then if so, the start and end
             dates of those terms.
         """
+        print(f"Checking user {last_name}")
         orig_row = self.power_user_df.loc[
             (self.power_user_df["last_name"] == last_name)
             & (self.power_user_df["start_timestamp"].dt.date <= period_end),
@@ -698,17 +700,18 @@ def load_user_df(user_form_path):
     user_df = pd.read_excel(user_form_path)
     user_df = user_df.rename(
         columns={
-            "Timestamp": "start_timestamp",
-            "Email Address": "email",
+            "Completion time": "start_timestamp",
+            "Email": "email",
             "First name": "first_name",
             "Last name": "last_name",
-            "PI Last Name": "pi_last_name",
-            "Contract end date (account expiration)": "end_timestamp",
+            "PI last name": "pi_last_name",
+            "Contract end date": "end_timestamp",
             (
-                "Do you need your account to be a power user account?"
+                "Do you need your account to be a Power User account"
             ): "power_user",
         }
     )
+    print(user_df.loc[:, ["last_name", "start_timestamp"]])
     user_df = user_df.assign(
         power_user=user_df["power_user"].str.strip() == "Yes"
     )
@@ -731,24 +734,23 @@ def load_user_update_df(user_update_form_path):
     user_update_df = pd.read_excel(user_update_form_path)
     user_update_df = user_update_df.rename(
         columns={
-            "Timestamp": "timestamp",
-            "Email Address": "email",
+            "Completion time": "timestamp",
+            "Email": "email",
             "First name": "first_name",
             "Last name": "last_name",
-            "PI Last Name": "pi_last_name",
+            "PI Last name (e.g., Smith)": "pi_last_name",
             (
                 "Request access to additional datashare "
-                + "(specify PI's last name)"
             ): "additional_datashare",
             (
-                "Update contract end date (account expiration)"
+                "Update contract end date"
             ): "new_end_timestamp",
             "Change account type": "new_power_user",
             "List projects for which you need security access": "new_projects",
             (
-                "By clicking yes below, you agree with these general terms. "
+                "Consent"
             ): "agree",
-            "Optional: Please feel free to leave any feedback.": "feedback",
+            "Please feel free to leave any feedback": "feedback",
         }
     )
     user_update_df = user_update_df.assign(
@@ -772,13 +774,12 @@ def load_pi_df(pi_form_path):
     pi_df = pd.read_excel(pi_form_path)
     pi_df = pi_df.rename(
         columns={
-            "Timestamp": "start_timestamp",
-            "Email Address": "email",
-            "First name": "first_name",
-            "Last name": "last_name",
+            "Completion time": "start_timestamp",
+            "Email": "email",
+            "First Name": "first_name",
+            "Last Name": "last_name",
             (
-                "Would you like your account to be a power user account? "
-                + "(There is a fee associated with power user accounts.)"
+                "Would you like your account to be a power user account?"
             ): "pi_is_power_user",
             "Speed code": "speed_code",
             "Required storage needs (in TB)": "storage",
@@ -806,24 +807,22 @@ def load_storage_update_df(storage_update_form_path):
     storage_update_df = pd.read_excel(storage_update_form_path)
     storage_update_df = storage_update_df.rename(
         columns={
-            "Timestamp": "timestamp",
-            "Email Address": "email",
-            "First Name": "first_name",
-            "Last Name": "last_name",
+            "Completion time": "timestamp",
+            "Email": "email",
+            "First name": "first_name",
+            "Last name": "last_name",
             (
-                "Additional storage needs "
-                "(in TB; to be added to existing storage)"
+                "Additional storage needs (in TB)"
             ): "new_storage",
-            "Speed code": "speed_code",
+            "New speed code": "speed_code",
             (
-                "Do you need separate access groups for specific projects?  "
-                + "If yes, please list the project names."
+                "New secure project spaces names"
             ): "access_groups",
             (
-                "By clicking yes below, you agree with these general terms. "
+                "Consent"
             ): "agree",
-            "Optional: Please feel free to leave any feedback.": "feedback",
-            "I would like to close my server account": "account_closed",
+            "Please feel free to leave any feedback": "feedback",
+            "Account closure2": "account_closed",
         }
     )
     storage_update_df = storage_update_df.assign(
@@ -953,6 +952,7 @@ def generate_all_pi_bills(paths, quarter_start_iso, out_dir):
     pi_df, _ = preprocess_forms(pi_path, user_path)
 
     for pi_last_name in pi_df.loc[:, "last_name"]:
+        print(f"Doing {pi_last_name}")
         out_file = os.path.join(
             out_dir,
             f"pi-{pi_last_name}_quarter-{quarter_start_iso}_bill.tex",
@@ -985,6 +985,7 @@ def generate_pi_bill(paths, pi_last_name, quarter, out_file=None):
     pi_df, user_df = preprocess_forms(paths[0], paths[2])
     storage_update_df = load_storage_update_df(paths[1])
     user_update_df = load_user_update_df(paths[3])
+
 
     quarter_start = datetime.date.fromisoformat(quarter)
 
