@@ -1,6 +1,9 @@
+"""Module containing spreadsheet-based billing records."""
+
 from __future__ import annotations
 
 import datetime
+from typing import Literal
 
 import pandas as pd
 
@@ -263,7 +266,10 @@ class PowerUsersRecord:
 
     def describe_user(
         self, last_name: str, period_start: datetime.date, period_end: datetime.date
-    ) -> list[tuple[bool, datetime.date | None, datetime.date | None]]:
+    ) -> list[
+        tuple[Literal[True], datetime.date, datetime.date]
+        | tuple[Literal[False], None, None]
+    ]:
         """Check whether a user was a power user in a given period.
 
         Parameters
@@ -291,7 +297,7 @@ class PowerUsersRecord:
             return [(False, None, None)]
 
         # Only want the most recent term
-        orig_row = orig_row.loc[orig_row["start_timestamp"].idxmax()]
+        most_recent = orig_row.loc[orig_row["start_timestamp"].idxmax()]
         relevant_updates = self.power_user_update_df.loc[
             (self.power_user_update_df["last_name"] == last_name)
             & (self.power_user_update_df["timestamp"].dt.date <= period_end)
@@ -305,25 +311,29 @@ class PowerUsersRecord:
         relevant_updates = relevant_updates.loc[
             (
                 relevant_updates["timestamp"].dt.date
-                >= orig_row["start_timestamp"].date()
+                >= most_recent["start_timestamp"].date()
             ),
             :,
         ]
         for update in relevant_updates.sort_values(by=["timestamp"]).itertuples():
-            if update.timestamp.date() > orig_row["end_timestamp"].date():
-                orig_row = gen_new_term_from_row(orig_row, update)
+            if update.timestamp.date() > most_recent["end_timestamp"].date():
+                most_recent = gen_new_term_from_row(most_recent, update)
             else:
-                orig_row = update_term_from_row(orig_row, update)
+                most_recent = update_term_from_row(most_recent, update)
 
         if not (
-            pd.isna(orig_row["end_timestamp"])
-            or orig_row["end_timestamp"].date() >= period_start
+            pd.isna(most_recent["end_timestamp"])
+            or most_recent["end_timestamp"].date() >= period_start
         ):
             return [(False, None, None)]
 
         return [
-            (True, orig_row["start_timestamp"], orig_row["end_timestamp"])
-            if orig_row["power_user"]
+            (
+                True,
+                most_recent["start_timestamp"].date(),
+                most_recent["end_timestamp"].date(),
+            )
+            if most_recent["power_user"]
             else (False, None, None)
         ]
 

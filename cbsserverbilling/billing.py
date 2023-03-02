@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
+from pathlib import Path
 
 import pandas as pd
 from jinja2 import Environment, PackageLoader
@@ -299,9 +300,8 @@ def generate_all_pi_bills(
     pi_df, _ = preprocess_forms(pi_path, user_path)
 
     for pi_last_name in pi_df.loc[:, "last_name"]:
-        out_file = os.path.join(
-            out_dir,
-            f"pi-{pi_last_name}_quarter-{quarter_start_iso}_bill.tex",
+        out_file = (
+            Path(out_dir) / f"pi-{pi_last_name}_quarter-{quarter_start_iso}_bill.tex"
         )
         generate_pi_bill(
             [pi_path, storage_update_path, user_path, user_update_path],
@@ -357,6 +357,7 @@ def generate_pi_bill(
 
 
 def gen_parser() -> argparse.ArgumentParser:
+    """Generate a command-line parser."""
     parser = argparse.ArgumentParser(description="Process CBS Server billing data.")
     parser.add_argument("pi_form", type=str, help="path to the PI form data")
     parser.add_argument(
@@ -379,9 +380,7 @@ def gen_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
-    parser = gen_parser()
-
-    args = parser.parse_args()
+    args = gen_parser().parse_args()
     generate_all_pi_bills(
         [
             args.pi_form,
@@ -400,5 +399,5 @@ if __name__ == "__main__":
             args.user_update_form,
         ],
         args.quarter_start,
-        f"{args.out_dir}/summary_{args.quarter_start}.xlsx",
+        Path(args.out_dir) / f"summary_{args.quarter_start}.xlsx",
     )

@@ -1,3 +1,5 @@
+"""Billing policy definitions."""
+
 from __future__ import annotations
 
 import calendar
@@ -169,16 +171,16 @@ class BillingPolicy:
         price_record = []
         first_price_applied = False
         for name, user_start, user_end in power_users:
-            if (pd.notna(user_end)) and user_end.date() <= get_end_of_period(
+            if (pd.notna(user_end)) and user_end <= get_end_of_period(
                 start_date.year, start_date.month, self.MIN_BILL_USAGE
             ):
-                price = 0
-            elif user_start.date() > get_end_of_period(
+                price = 0.0
+            elif user_start > get_end_of_period(
                 start_date.year,
                 start_date.month,
                 self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
             ):
-                price = 0
+                price = 0.0
             elif not first_price_applied:
                 price = self.FIRST_POWER_USER_PRICE * 0.25
                 first_price_applied = True
@@ -270,6 +272,7 @@ class BillingPolicy:
         quarter_start : date
             Date in the first month of the quarter.
         """
+        # pylint: disable=too-many-locals,too-many-arguments
         pi_name = storage_record.get_pi_full_name(pi_last_name)
         end_date = get_end_of_period(
             quarter_start.year, quarter_start.month, self.PERIOD_LENGTH
