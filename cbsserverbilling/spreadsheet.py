@@ -7,16 +7,18 @@ from typing import Literal
 
 import pandas as pd
 
+from cbsserverbilling.records import StorageRecord, PowerUsersRecord
 
-class StorageRecord:
+
+class SpreadsheetStorageRecord(StorageRecord):
     """Record describing all PIs' storage use.
 
     Attributes
     ----------
-    storage_df : DataFrame
+    storage_df
         Dataframe containing storage information.
-    storage_update_df : DataFrame
-        Datafram containing updates to PIs' requested storage.
+    storage_update_df
+        Dataframe containing updates to PIs' requested storage.
     """
 
     def __init__(
@@ -30,11 +32,11 @@ class StorageRecord:
 
         Parameters
         ----------
-        pi_last_name : str
+        pi_last_name
             Last name of the PI
 
         Returns
-        str
+        -------
             Full name of the PI
         """
         return (
@@ -93,9 +95,9 @@ class StorageRecord:
 
         Parameters
         ----------
-        pi_last_name : str
+        pi_last_name
             Last name of the PI.
-        date : date
+        date
             Date to check storage price.
 
         Returns
@@ -153,7 +155,7 @@ class StorageRecord:
         )
 
 
-class PowerUsersRecord:
+class SpreadsheetPowerUsersRecord(PowerUsersRecord):
     """Record describing the users described by the forms.
 
     Attributes

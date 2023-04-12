@@ -8,7 +8,7 @@ import datetime
 from jinja2 import Environment
 import pandas as pd
 
-from cbsserverbilling.spreadsheet import StorageRecord, PowerUsersRecord
+from cbsserverbilling.records import StorageRecord, PowerUsersRecord
 
 # Storage price in dollars/TB/year
 STORAGE_PRICE = 50
@@ -67,7 +67,11 @@ class BillingPolicy:
             self.MIN_BILL_USAGE,
         )
         account_close_date = storage_record.get_pi_account_close_date(pi_last_name)
-        if pd.isna(account_close_date) or (account_close_date > cutoff_date):
+        if (
+            pd.isna(account_close_date)
+            or (not account_close_date)
+            or (account_close_date > cutoff_date)
+        ):
             return True
         return False
 
