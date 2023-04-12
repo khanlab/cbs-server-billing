@@ -1,30 +1,35 @@
 """Interface for getting raw CBS Server usage information."""
 
 import datetime
-
 from abc import ABCMeta, abstractmethod
-from typing import Literal
+
+from attrs import define
 
 
-class StorageRecord(metaclass=ABCMeta):
-    """Record of a PI's account storage."""
+@define
+class User:
+    """A user of the CBS Server."""
+    # pylint: disable=too-few-public-methods
+    name: str
+    power_user: bool
+    start_date: datetime.date
+    end_date: datetime.date | None = None
+
+
+class BillableProjectRecord(metaclass=ABCMeta):
+    """Record of one billable project."""
 
     @abstractmethod
-    def get_pi_full_name(self, pi_last_name: str) -> str:
+    def get_pi_full_name(self) -> str:
         """Get a PI's full name.
-
-        Parameters
-        ----------
-        pi_last_name
-            Last name of the PI
 
         Returns
         -------
-            Full name of the PI
+        Full name of the PI
         """
 
     @abstractmethod
-    def get_storage_start(self, pi_last_name: str) -> datetime.date:
+    def get_storage_start(self) -> datetime.date:
         """Get a PI's storage start date.
 
         Parameters
@@ -38,13 +43,8 @@ class StorageRecord(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_pi_account_close_date(self, pi_last_name: str) -> datetime.date | None:
+    def get_close_date(self) -> datetime.date | None:
         """Get a PI's account closure date, if any.
-
-        Parameters
-        ----------
-        pi_last_name
-            Last name of the PI.
 
         Returns
         -------
@@ -52,13 +52,11 @@ class StorageRecord(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_storage_amount(self, pi_last_name: str, date: datetime.date) -> float:
+    def get_storage_amount(self, date: datetime.date) -> float:
         """Get the amount of storage allocated to this PI on a given date.
 
         Parameters
         ----------
-        pi_last_name
-            Last name of the PI.
         date
             Date to check storage price.
 
@@ -68,13 +66,11 @@ class StorageRecord(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_speed_code(self, pi_last_name: str, date: datetime.date) -> str:
-        """Get the speed code associated with this PI on a date.
+    def get_speed_code(self, date: datetime.date) -> str:
+        """Get the speed code associated with this project on a date.
 
         Parameters
         ----------
-        pi_last_name
-            Last name of the PI.
         date
             Date on which to check the speed code.
 
@@ -83,14 +79,10 @@ class StorageRecord(metaclass=ABCMeta):
             Speed code associated with this PI.
         """
 
-
-class PowerUsersRecord(metaclass=ABCMeta):
-    """Record describing the CBS Servers' power users."""
-
     @abstractmethod
     def enumerate_all_users(
         self, start_date: datetime.date, end_date: datetime.date
-    ) -> list[tuple[str, datetime.date, datetime.date]]:
+    ) -> list[User]:
         """Generate a list of all users with an active account.
 
         Parameters
@@ -109,14 +101,12 @@ class PowerUsersRecord(metaclass=ABCMeta):
 
     @abstractmethod
     def enumerate_power_users(
-        self, pi_last_name: str, start_date: datetime.date, end_date: datetime.date
-    ) -> list[tuple[str, datetime.date, datetime.date]]:
+        self, start_date: datetime.date, end_date: datetime.date
+    ) -> list[User]:
         """Generate a list of power users associated with this PI.
 
         Parameters
         ----------
-        pi_last_name
-            PI of the users to enumerate.
         start_date
             First date to consider.
         end_date
@@ -132,10 +122,7 @@ class PowerUsersRecord(metaclass=ABCMeta):
     @abstractmethod
     def describe_user(
         self, last_name: str, period_start: datetime.date, period_end: datetime.date
-    ) -> list[
-        tuple[Literal[True], datetime.date, datetime.date]
-        | tuple[Literal[False], None, None]
-    ]:
+    ) -> list[User]:
         """Check whether a user was a power user in a given period.
 
         Parameters
