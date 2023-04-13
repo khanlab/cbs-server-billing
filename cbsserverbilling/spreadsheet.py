@@ -5,12 +5,75 @@ from __future__ import annotations
 import datetime
 from typing import Literal
 
+from attrs import define
 import pandas as pd
 
-from cbsserverbilling.records import StorageRecord, PowerUsersRecord
+from cbsserverbilling.records import BillableProjectRecord
 
 
-class SpreadsheetStorageRecord(StorageRecord):
+@define
+class SpreadsheetBillableProjectRecord(BillableProjectRecord):
+    """Billable project record derived from a set of spreadsheets."""
+
+    storage_record: SpreadsheetStorageRecord
+    power_users_record: SpreadsheetPowerUsersRecord
+    pi_last_name: str
+    speed_code: str
+    open_date: datetime.date
+    close_date: datetime.date | None = None
+
+    def get_pi_full_name(self) -> str:
+        """Get a PI's full name.
+
+        Returns
+        -------
+        str
+            Full name of the PI
+        """
+        return self.storage_record.get_pi_full_name(self.pi_last_name)
+
+    def get_storage_start(self) -> datetime.date:
+        """Get a PI's storage start date.
+
+        Parameters
+        ----------
+        pi_last_name
+            Last name of the PI.
+
+        Returns
+        -------
+        datetime.date
+            Date this PI's storage started.
+        """
+        return self.open_date
+
+    def get_close_date(self) -> datetime.date | None:
+        """Get a PI's account closure date, if any.
+
+        Returns
+        -------
+            Date this PI's account was closed, if any.
+        """
+        return self.close_date
+
+    def get_storage_amount(self, date: datetime.date) -> float:
+        """Get the amount of storage allocated to this PI on a given date.
+
+        Parameters
+        ----------
+        date
+            Date to check storage price.
+
+        Returns
+        -------
+            Amount of storage (in TB) allocated to this PI.
+        """
+        return self.storage_record.get_storage_amount(
+            self.pi_last_name, self.speed_code, date
+        )
+
+
+class SpreadsheetStorageRecord:
     """Record describing all PIs' storage use.
 
     Attributes
@@ -90,13 +153,17 @@ class SpreadsheetStorageRecord(StorageRecord):
             return None
         return closure_row.iloc[0].date()
 
-    def get_storage_amount(self, pi_last_name: str, date: datetime.date) -> float:
+    def get_storage_amount(
+        self, pi_last_name: str, speed_code: str, date: datetime.date
+    ) -> float:
         """Get the amount of storage allocated to this PI on a given date.
 
         Parameters
         ----------
         pi_last_name
             Last name of the PI.
+        speed_code
+            Speed code associated with the billable project
         date
             Date to check storage price.
 
@@ -108,6 +175,7 @@ class SpreadsheetStorageRecord(StorageRecord):
         total_storage = 0
         pi_storage = self.storage_df.loc[
             (self.storage_df["last_name"] == pi_last_name)
+            & (self.storage_df["speed_code"] == speed_code)
             & (self.storage_df["start_timestamp"].dt.date <= date),
             :,
         ]
@@ -155,7 +223,7 @@ class SpreadsheetStorageRecord(StorageRecord):
         )
 
 
-class SpreadsheetPowerUsersRecord(PowerUsersRecord):
+class SpreadsheetPowerUsersRecord:
     """Record describing the users described by the forms.
 
     Attributes

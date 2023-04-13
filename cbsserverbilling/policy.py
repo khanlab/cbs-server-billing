@@ -35,9 +35,9 @@ class BillingPolicy:
         record: BillableProjectRecord,
         start_date: datetime.date,
     ) -> bool:
-        """Check whether a PI is billable in this quarter.
+        """Check whether a billable project is billable in this quarter.
 
-        A PI is billable if their account was created before the end of the
+        A billable project is billable if their account was created before the end of the
         period, and either still open or closed more than two months into the
         period.
 
@@ -51,7 +51,7 @@ class BillingPolicy:
         Returns
         -------
         bool
-            True if the PI is billable in the specified period.
+            True if the billable project is billable in the specified period.
         """
         end_date = get_end_of_period(
             start_date.year, start_date.month, self.PERIOD_LENGTH
@@ -77,7 +77,7 @@ class BillingPolicy:
         record: BillableProjectRecord,
         start_date: datetime.date,
     ) -> float:
-        """Calculate a quarter's storage usage for one PI.
+        """Calculate a quarter's storage usage for one billable project.
 
         Parameters
         ----------
@@ -89,7 +89,7 @@ class BillingPolicy:
         Returns
         -------
         float
-            Total storage used by the PI in this quarter
+            Total storage used by the billable project in this quarter
         """
         cutoff_date = get_end_of_period(
             start_date.year,
@@ -112,7 +112,7 @@ class BillingPolicy:
         record: BillableProjectRecord,
         start_date: datetime.date,
     ) -> float:
-        """Calculate a quarter's storage price for one PI.
+        """Calculate a quarter's storage price for one billable project.
 
         Parameters
         ----------
@@ -124,7 +124,7 @@ class BillingPolicy:
         Returns
         -------
         float
-            Total storage price for the PI for the quarter.
+            Total storage price for the billable project for the quarter.
         """
         return (
             self.get_quarterly_storage_amount(record, start_date)
@@ -137,7 +137,7 @@ class BillingPolicy:
         record: BillableProjectRecord,
         start_date: datetime.date,
     ) -> list[tuple[User, float]]:
-        """Calculate the price each of one PI's power users in a quarter.
+        """Calculate the price each of one billable project's power users in a quarter.
 
         Parameters
         ----------
@@ -149,7 +149,7 @@ class BillingPolicy:
         Returns
         -------
         list of tuple
-            A tuple for each of the PI's power users, including the user's
+            A tuple for each of the billable project's power users, including the user's
             name, start date, end date, and price.
         """
         end_date = get_end_of_period(
@@ -189,7 +189,7 @@ class BillingPolicy:
         record: BillableProjectRecord,
         quarter_start: datetime.date,
     ) -> float:
-        """Calculate a quarter's power user price for one PI.
+        """Calculate a quarter's power user price for one billable project.
 
         Parameters
         ----------
@@ -201,7 +201,7 @@ class BillingPolicy:
         Returns
         -------
         float
-            Total power users price for the PI for the quarter.
+            Total power users price for the billable project for the quarter.
         """
 
         return sum(
@@ -216,7 +216,7 @@ class BillingPolicy:
         record: BillableProjectRecord,
         quarter_start: datetime.date,
     ):
-        """Calculate a quarter's total price for one PI.
+        """Calculate a quarter's total price for one billable project.
 
         Parameters
         ----------
@@ -228,7 +228,7 @@ class BillingPolicy:
         Returns
         -------
         float
-            Total power users price for the PI for the quarter.
+            Total power users price for the billable project for the quarter.
         """
         return self.get_quarterly_storage_price(
             record, quarter_start
@@ -246,12 +246,10 @@ class BillingPolicy:
         ----------
         record : BillableProjectRecord
             Record with all the storage information.
-        pi_last_name : str
-            Last name of the PI to query.
         quarter_start : date
             Date in the first month of the quarter.
         """
-        # pylint: disable=too-many-locals,too-many-arguments
+        # pylint: disable=too-many-locals
         pi_name = record.get_pi_full_name()
         end_date = get_end_of_period(
             quarter_start.year, quarter_start.month, self.PERIOD_LENGTH
