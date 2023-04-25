@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import datetime
+import logging
+import os
 from typing import Literal
 
 import pandas as pd
 from attrs import define
 
-from cbsserverbilling.records import BillableProjectRecord
+from cbsserverbilling.records import BillableProjectRecord, User
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 @define
@@ -58,6 +63,31 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
             self.speed_code,
             date,
         )
+
+    def get_speed_code(self, date: datetime.date) -> str:  # noqa: ARG002
+        """Get the speed code associated with this project on a date.
+
+        Parameters
+        ----------
+        date
+            Date on which to check the speed code.
+        """
+        return self.speed_code
+
+    def enumerate_all_users(
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ) -> list[User]:
+        """Generate a list of all users with an active account.
+
+        Parameters
+        ----------
+        start_date
+            First date to consider.
+        end_date
+            Last date to consider.
+        """
 
 
 @define
@@ -128,7 +158,7 @@ class SpreadsheetStorageRecord:
             & (self.storage_update_df["account_closed"]),
             "timestamp",
         ]
-        if len(closure_row) == 0:
+        if closure_row.empty:
             return None
         return closure_row.iloc[0].date()
 
@@ -194,19 +224,20 @@ class SpreadsheetStorageRecord:
             & (self.storage_update_df["timestamp"].dt.date <= date),
             :,
         ]
-        return (
+        return str(
             self.storage_df.loc[
                 self.storage_df["last_name"] == pi_last_name,
                 "speed_code",
             ].iloc[0]
-            if len(speed_code_updates) == 0
+            if speed_code_updates.empty
             else speed_code_updates.loc[
                 speed_code_updates["timestamp"].idxmax(),
                 "speed_code",
-            ]
+            ],
         )
 
 
+@define
 class SpreadsheetPowerUsersRecord:
     """Record describing the users described by the forms.
 
@@ -220,13 +251,8 @@ class SpreadsheetPowerUsersRecord:
         user dataframe.
     """
 
-    def __init__(
-        self,
-        power_user_df: pd.DataFrame,
-        power_user_update_df: pd.DataFrame,
-    ) -> None:
-        self.power_user_df = power_user_df
-        self.power_user_update_df = power_user_update_df
+    power_user_df: pd.DataFrame
+    power_user_update_df: pd.DataFrame
 
     def enumerate_all_users(
         self,
@@ -237,9 +263,9 @@ class SpreadsheetPowerUsersRecord:
 
         Parameters
         ----------
-        start_date : date
+        start_date
             First date to consider.
-        end_date : date
+        end_date
             Last date to consider.
 
         Returns
@@ -257,34 +283,62 @@ class SpreadsheetPowerUsersRecord:
             (self.power_user_update_df["timestamp"].dt.date < end_date)
             & (pd.notna(self.power_user_update_df["new_end_timestamp"])),
             ["last_name", "timestamp", "new_end_timestamp"],
-        ]
+        ].assign(applied=False)
         users = []
-        for user in user_df.itertuples():
-            user_rows = user_df.loc[user_df["last_name"] == user.last_name, :]
-            user_row = user_rows.loc[user_rows["start_timestamp"].idxmax()]
-            if user_row["start_timestamp"] != user.start_timestamp:
-                continue
+        for term in user_df.itertuples():
             updates = update_df.loc[
-                (update_df["last_name"] == user.last_name)
-                & (update_df["timestamp"] > user.start_timestamp),
+                (update_df["last_name"] == term.last_name)
+                & (update_df["timestamp"] > term.start_timestamp),
                 :,
             ]
-            end_timestamp = (
-                updates.loc[updates["timestamp"].idxmax()]["new_end_timestamp"].date()
-                if len(updates) > 0
-                else (
-                    user.end_timestamp.date() if pd.notna(user.end_timestamp) else None
-                )
+            term_end_date: datetime.date | None = (
+                term.end_timestamp.date() if pd.notna(term.end_timestamp) else None
             )
-            if (end_timestamp is None) or (end_timestamp > start_date):
+            for update in updates.itertuples():
+                if update.applied:
+                    logger.warning(
+                        "Update %s already applied to a different term.",
+                        update,
+                    )
+                if (not term_end_date) or (update.timestamp.date() < term_end_date):
+                    term_end_date = update.new_end_timestamp.date()
+                    update_df.loc[update.Index, "applied"] = True
+            if (not term_end_date) or (term_end_date > start_date):
                 users.append(
-                    (
-                        user.last_name,
-                        user.start_timestamp.date(),
-                        end_timestamp,
+                    User(
+                        name=term.last_name,
+                        power_user=False,
+                        start_date=term.start_timestamp.date(),
+                        end_date=term_end_date,
                     ),
                 )
-        return users
+        update_terms = []
+        for unused_update in update_df.loc[~update_df["applied"], :].itertuples():
+            # These should be new terms for expired users.
+            if unused_update.last_name not in {user.name for user in users}:
+                raise InvalidUpdateError(str(unused_update))
+            used_update = False
+            for term in [
+                term
+                for term in update_terms
+                if term.name == unused_update.last_name
+            ]:
+                if (term.end_date) and (unused_update.timestamp.date() > term.end_date):
+                    continue
+                term.end_date = unused_update.new_end_timestamp.date()
+                used_update = True
+                break
+            if not used_update:
+                update_terms.append(
+                    User(
+                        name=unused_update.last_name,
+                        power_user=False,
+                        start_date=unused_update.timestamp.date(),
+                        end_date=unused_update.new_end_timestamp.date(),
+                    ),
+                )
+
+        return users + update_terms
 
     def enumerate_power_users(
         self,
@@ -433,3 +487,182 @@ def update_term_from_row(orig_row: pd.Series, update: pd.Series):
             # timestamp, so update appropriately.
             orig_row["end_timestamp"] = update.timestamp
     return orig_row
+
+
+def load_user_df(user_form_path: os.PathLike[str] | str) -> pd.DataFrame:
+    """Load user Google Forms data into a usable pandas dataframe.
+
+    Parameters
+    ----------
+    user_form_path
+        Path to the excel sheet containing collected CBS server user data.
+
+    Returns
+    -------
+    DataFrame
+        A data frame with column names adjusted to be more usable, and the
+        power user column cast to a boolean instead of a string.
+    """
+    user_df = pd.read_excel(user_form_path, engine="openpyxl")
+    user_df = user_df.rename(
+        columns={
+            "Completion time": "start_timestamp",
+            "Email": "email",
+            "First name": "first_name",
+            "Last name": "last_name",
+            "PI last name": "pi_last_name",
+            "Contract end date": "end_timestamp",
+            "Do you need your account to be a Power User account": "power_user",
+        },
+    )
+    user_df = user_df.assign(power_user=user_df["power_user"].str.strip() == "Yes")
+    return user_df
+
+
+def load_user_update_df(user_update_form_path: os.PathLike[str] | str) -> pd.DataFrame:
+    """Load dataframe containing updates to user dataframe.
+
+    Parameters
+    ----------
+    user_update_form_path
+        Path to the user update form.
+
+    Returns
+    -------
+    DataFrame
+        Dataframe containing updates to user account specifications.
+    """
+    user_update_df = pd.read_excel(user_update_form_path, engine="openpyxl")
+    user_update_df = user_update_df.rename(
+        columns={
+            "Completion time": "timestamp",
+            "Email": "email",
+            "First name": "first_name",
+            "Last name": "last_name",
+            "PI Last name (e.g., Smith)": "pi_last_name",
+            ("Request access to additional datashare "): "additional_datashare",
+            ("Update contract end date"): "new_end_timestamp",
+            "Change account type": "new_power_user",
+            "List projects for which you need security access": "new_projects",
+            ("Consent"): "agree",
+            "Please feel free to leave any feedback": "feedback",
+        },
+    )
+    user_update_df = user_update_df.assign(
+        agree=user_update_df["agree"].str.strip() == "Yes",
+        new_power_user=user_update_df["new_power_user"].map(
+            lambda x: None if pd.isna(x) else x.strip() == "Power user",
+        ),
+    )
+    return user_update_df
+
+
+def load_pi_df(pi_form_path: os.PathLike[str] | str) -> pd.DataFrame:
+    """Load PI Google Forms data into a usable pandas dataframe.
+
+    Parameters
+    ----------
+    pi_form_path
+        Path to the PI form.
+    """
+    pi_df = pd.read_excel(pi_form_path, engine="openpyxl")
+    pi_df = pi_df.rename(
+        columns={
+            "Completion time": "start_timestamp",
+            "Email": "email",
+            "First Name": "first_name",
+            "Last Name": "last_name",
+            (
+                "Would you like your account to be a power user account?"
+            ): "pi_is_power_user",
+            "Speed code": "speed_code",
+            "Required storage needs (in TB)": "storage",
+        },
+    )
+    pi_df = pi_df.assign(
+        pi_is_power_user=pi_df["pi_is_power_user"].str.strip() == "Yes",
+    )
+    return pi_df
+
+
+def load_storage_update_df(
+    storage_update_form_path: os.PathLike[str] | str,
+) -> pd.DataFrame:
+    """Load dataframe containing updates to PI dataframe.
+
+    Parameters
+    ----------
+    storage_update_form_path : str
+        Path to the storage update form.
+
+    Returns
+    -------
+    DataFrame
+        Dataframe containing updates to PI storage needs.
+    """
+    storage_update_df = pd.read_excel(storage_update_form_path, engine="openpyxl")
+    storage_update_df = storage_update_df.rename(
+        columns={
+            "Completion time": "timestamp",
+            "Email": "email",
+            "First name": "first_name",
+            "Last name": "last_name",
+            ("Additional storage needs (in TB)"): "new_storage",
+            "New speed code": "speed_code",
+            ("New secure project spaces names"): "access_groups",
+            ("Consent"): "agree",
+            "Please feel free to leave any feedback": "feedback",
+            "Account closure2": "account_closed",
+        },
+    )
+    storage_update_df = storage_update_df.assign(
+        agree=storage_update_df["agree"].str.strip() == "Yes",
+        account_closed=storage_update_df["account_closed"].str.strip() == "Yes",
+    )
+    return storage_update_df
+
+
+def add_pis_to_user_df(pi_df: pd.DataFrame, user_df: pd.DataFrame) -> pd.DataFrame:
+    """Add PI user accounts to the user dataframe.
+
+    PI user account information is stored in the PI Google Forms data by
+    default, but is easier to work with if it's grouped with the other user
+    account data.
+
+    Parameters
+    ----------
+    pi_df
+        Data frame including PI storage and PI account power user information.
+    user_df
+        Data frame including user account information.
+
+    Returns
+    -------
+    DataFrame
+        User dataframe with rows describing PI user accounts appended to the
+        end.
+    """
+    pi_user_df = pi_df.loc[
+        :,
+        [
+            "start_timestamp",
+            "email",
+            "first_name",
+            "last_name",
+            "pi_is_power_user",
+        ],
+    ]
+    pi_user_df = pi_user_df.assign(
+        pi_last_name=pi_user_df["last_name"],
+        end_timestamp=(None),
+    )
+    pi_user_df = pi_user_df.rename(columns={"pi_is_power_user": "power_user"})
+    return pd.concat([user_df, pi_user_df], ignore_index=True)
+
+
+class InvalidUpdateError(Exception):
+    """Exception raised when a user update doesn't apply to an existent user."""
+
+    def __init__(self, update_str: str) -> None:
+        """update_str: __str__ of the failed update."""
+        super().__init__(f"Update {update_str} does not apply to an existent user.")
