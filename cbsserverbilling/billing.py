@@ -1,4 +1,4 @@
-"""Utilities to calculate CBS Server billing"""
+"""Utilities to calculate CBS Server billing."""
 from __future__ import annotations
 
 import argparse
@@ -10,9 +10,11 @@ import pandas as pd
 from jinja2 import Environment, PackageLoader
 
 from cbsserverbilling.policy import BillingPolicy
-from cbsserverbilling.spreadsheet import StorageRecord, PowerUsersRecord
+from cbsserverbilling.spreadsheet import PowerUsersRecord, StorageRecord
 
-env = Environment(loader=PackageLoader("cbsserverbilling", "templates"))
+env = Environment(
+    loader=PackageLoader("cbsserverbilling", "templates"), autoescape=True,
+)
 
 
 def load_user_df(user_form_path: os.PathLike) -> pd.DataFrame:
@@ -39,7 +41,7 @@ def load_user_df(user_form_path: os.PathLike) -> pd.DataFrame:
             "PI last name": "pi_last_name",
             "Contract end date": "end_timestamp",
             ("Do you need your account to be a Power User account"): "power_user",
-        }
+        },
     )
     user_df = user_df.assign(power_user=user_df["power_user"].str.strip() == "Yes")
     return user_df
@@ -72,12 +74,12 @@ def load_user_update_df(user_update_form_path: os.PathLike) -> pd.DataFrame:
             "List projects for which you need security access": "new_projects",
             ("Consent"): "agree",
             "Please feel free to leave any feedback": "feedback",
-        }
+        },
     )
     user_update_df = user_update_df.assign(
         agree=user_update_df["agree"].str.strip() == "Yes",
         new_power_user=user_update_df["new_power_user"].map(
-            lambda x: None if pd.isna(x) else x.strip() == "Power user"
+            lambda x: None if pd.isna(x) else x.strip() == "Power user",
         ),
     )
     return user_update_df
@@ -88,9 +90,8 @@ def load_pi_df(pi_form_path: os.PathLike) -> pd.DataFrame:
 
     Parameters
     ----------
-    DataFrame
-        A dataframe with column names adjusted to be more usable, and the PI
-        power user column cast to a boolean instead of a string.
+    pi_form_path
+        Path to the PI form.
     """
     pi_df = pd.read_excel(pi_form_path, engine="openpyxl")
     pi_df = pi_df.rename(
@@ -104,10 +105,10 @@ def load_pi_df(pi_form_path: os.PathLike) -> pd.DataFrame:
             ): "pi_is_power_user",
             "Speed code": "speed_code",
             "Required storage needs (in TB)": "storage",
-        }
+        },
     )
     pi_df = pi_df.assign(
-        pi_is_power_user=pi_df["pi_is_power_user"].str.strip() == "Yes"
+        pi_is_power_user=pi_df["pi_is_power_user"].str.strip() == "Yes",
     )
     return pi_df
 
@@ -138,7 +139,7 @@ def load_storage_update_df(storage_update_form_path: os.PathLike) -> pd.DataFram
             ("Consent"): "agree",
             "Please feel free to leave any feedback": "feedback",
             "Account closure2": "account_closed",
-        }
+        },
     )
     storage_update_df = storage_update_df.assign(
         agree=storage_update_df["agree"].str.strip() == "Yes",
@@ -178,14 +179,16 @@ def add_pis_to_user_df(pi_df: pd.DataFrame, user_df: pd.DataFrame) -> pd.DataFra
         ],
     ]
     pi_user_df = pi_user_df.assign(
-        pi_last_name=pi_user_df["last_name"], end_timestamp=(None)
+        pi_last_name=pi_user_df["last_name"],
+        end_timestamp=(None),
     )
     pi_user_df = pi_user_df.rename(columns={"pi_is_power_user": "power_user"})
     return pd.concat([user_df, pi_user_df], ignore_index=True)
 
 
 def preprocess_forms(
-    pi_path: os.PathLike, user_path: os.PathLike
+    pi_path: os.PathLike,
+    user_path: os.PathLike,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load Google Forms data and rearrange it.
 
@@ -213,8 +216,10 @@ def preprocess_forms(
 
 
 def summarize_all_pi_bills(
-    paths: list[os.PathLike], quarter_start_iso: str, out_file: os.PathLike
-):
+    paths: list[os.PathLike],
+    quarter_start_iso: str,
+    out_file: os.PathLike,
+) -> None:
     """Print a summary of all PI bills."""
     pi_df, user_df = preprocess_forms(paths[0], paths[2])
     storage_update_df = load_storage_update_df(paths[1])
@@ -231,25 +236,34 @@ def summarize_all_pi_bills(
         {
             "pi": pi_last_name,
             "storage_amount": policy.get_quarterly_storage_amount(
-                storage_record, pi_last_name, quarter_start
+                storage_record,
+                pi_last_name,
+                quarter_start,
             ),
             "storage_price": policy.get_quarterly_storage_price(
-                storage_record, pi_last_name, quarter_start
+                storage_record,
+                pi_last_name,
+                quarter_start,
             ),
             "billed_power_users": len(
                 [
                     user
                     for user in policy.enumerate_quarterly_power_user_prices(
-                        power_users_record, pi_last_name, quarter_start
+                        power_users_record,
+                        pi_last_name,
+                        quarter_start,
                     )
                     if user[3] > 0
-                ]
+                ],
             ),
             "compute_price": policy.get_quarterly_power_user_price(
-                power_users_record, pi_last_name, quarter_start
+                power_users_record,
+                pi_last_name,
+                quarter_start,
             ),
             "speed_code": storage_record.get_speed_code(
-                pi_last_name, datetime.date.today()
+                pi_last_name,
+                datetime.date.today(),
             ),
         }
         for pi_last_name in pi_df.loc[:, "last_name"]
@@ -266,7 +280,7 @@ def summarize_all_pi_bills(
                 pi["storage_price"] + pi["compute_price"] for pi in summary
             ],
             "speed_code": [pi["speed_code"] for pi in summary],
-        }
+        },
     ).to_excel(out_file, index=False, engine="openpyxl")
 
     total_storage = sum(pi_bill["storage_price"] for pi_bill in summary)
@@ -282,18 +296,20 @@ def summarize_all_pi_bills(
 
 
 def generate_all_pi_bills(
-    paths: list[os.PathLike], quarter_start_iso: str, out_dir: os.PathLike
-):
+    paths: list[os.PathLike],
+    quarter_start_iso: str,
+    out_dir: os.PathLike,
+) -> None:
     """Loop through all PIs and save a bill for each.
 
     Parameters
     ----------
-    paths : list of str
+    paths
         Path to the PI form data, storage update form data, user form data,
         and user update form data, in that order.
-    quarter_start_iso : str
+    quarter_start_iso
         ISO formatted end date of the billing quarter.
-    out_dir : str, optional
+    out_dir
         Directory into which to output bill text files.
     """
     [pi_path, storage_update_path, user_path, user_update_path] = paths
@@ -316,21 +332,21 @@ def generate_pi_bill(
     pi_last_name: str,
     quarter: str,
     out_file: os.PathLike | None = None,
-):
+) -> None:
     """Open data files and produce a report for one PI.
 
     If the PI is not billable this quarter, this will do nothing.
 
     Parameters
     ----------
-    paths: list of str
+    paths
         Paths to PI form data, storage update form data, user form data,
         and user update form data, in that order.
-    pi_last_name : str
+    pi_last_name
         Last name of the PI to bill.
-    quarter : str
+    quarter
         ISO formatted start date of the billing quarter.
-    out_file : str, optional
+    out_file
         Path to output text file.
     """
     pi_df, user_df = preprocess_forms(paths[0], paths[2])
@@ -348,12 +364,15 @@ def generate_pi_bill(
         return
 
     bill_tex = policy.generate_quarterly_bill_tex(
-        storage_record, power_users_record, pi_last_name, quarter_start, env
+        storage_record,
+        power_users_record,
+        pi_last_name,
+        quarter_start,
+        env,
     )
     if out_file is not None:
-        with open(out_file, "w", encoding="utf-8") as writable:
+        with Path(out_file).open("w", encoding="utf-8") as writable:
             writable.write(bill_tex)
-        return
 
 
 def gen_parser() -> argparse.ArgumentParser:
@@ -367,13 +386,19 @@ def gen_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("user_form", type=str, help="path to the user form data")
     parser.add_argument(
-        "user_update_form", type=str, help="path to the user update form data"
+        "user_update_form",
+        type=str,
+        help="path to the user update form data",
     )
     parser.add_argument(
-        "quarter_start", type=str, help="first day of the quarter to bill"
+        "quarter_start",
+        type=str,
+        help="first day of the quarter to bill",
     )
     parser.add_argument(
-        "out_dir", type=str, help="directory into which to output bill files"
+        "out_dir",
+        type=str,
+        help="directory into which to output bill files",
     )
 
     return parser

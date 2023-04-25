@@ -5,8 +5,8 @@ from __future__ import annotations
 import datetime
 from typing import Literal
 
-from attrs import define
 import pandas as pd
+from attrs import define
 
 from cbsserverbilling.records import BillableProjectRecord
 
@@ -33,27 +33,11 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
         return self.storage_record.get_pi_full_name(self.pi_last_name)
 
     def get_storage_start(self) -> datetime.date:
-        """Get a PI's storage start date.
-
-        Parameters
-        ----------
-        pi_last_name
-            Last name of the PI.
-
-        Returns
-        -------
-        datetime.date
-            Date this PI's storage started.
-        """
+        """Get a PI's storage start date."""
         return self.open_date
 
     def get_close_date(self) -> datetime.date | None:
-        """Get a PI's account closure date, if any.
-
-        Returns
-        -------
-            Date this PI's account was closed, if any.
-        """
+        """Get a PI's account closure date, if any."""
         return self.close_date
 
     def get_storage_amount(self, date: datetime.date) -> float:
@@ -66,29 +50,22 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
 
         Returns
         -------
+        float
             Amount of storage (in TB) allocated to this PI.
         """
         return self.storage_record.get_storage_amount(
-            self.pi_last_name, self.speed_code, date
+            self.pi_last_name,
+            self.speed_code,
+            date,
         )
 
 
+@define
 class SpreadsheetStorageRecord:
-    """Record describing all PIs' storage use.
+    """Record describing all PIs' storage use."""
 
-    Attributes
-    ----------
-    storage_df
-        Dataframe containing storage information.
-    storage_update_df
-        Dataframe containing updates to PIs' requested storage.
-    """
-
-    def __init__(
-        self, storage_df: pd.DataFrame, storage_update_df: pd.DataFrame
-    ) -> None:
-        self.storage_df = storage_df
-        self.storage_update_df = storage_update_df
+    storage_df: pd.DataFrame
+    storage_update_df: pd.DataFrame
 
     def get_pi_full_name(self, pi_last_name: str) -> str:
         """Get a PI's full name.
@@ -104,7 +81,8 @@ class SpreadsheetStorageRecord:
         """
         return (
             self.storage_df.loc[
-                self.storage_df["last_name"] == pi_last_name, "first_name"
+                self.storage_df["last_name"] == pi_last_name,
+                "first_name",
             ].iloc[0]
             + " "
             + pi_last_name
@@ -125,7 +103,8 @@ class SpreadsheetStorageRecord:
         """
         return (
             self.storage_df.loc[
-                self.storage_df["last_name"] == pi_last_name, "start_timestamp"
+                self.storage_df["last_name"] == pi_last_name,
+                "start_timestamp",
             ]
             .iloc[0]
             .date()
@@ -154,7 +133,10 @@ class SpreadsheetStorageRecord:
         return closure_row.iloc[0].date()
 
     def get_storage_amount(
-        self, pi_last_name: str, speed_code: str, date: datetime.date
+        self,
+        pi_last_name: str,
+        speed_code: str,
+        date: datetime.date,
     ) -> float:
         """Get the amount of storage allocated to this PI on a given date.
 
@@ -214,11 +196,13 @@ class SpreadsheetStorageRecord:
         ]
         return (
             self.storage_df.loc[
-                self.storage_df["last_name"] == pi_last_name, "speed_code"
+                self.storage_df["last_name"] == pi_last_name,
+                "speed_code",
             ].iloc[0]
             if len(speed_code_updates) == 0
             else speed_code_updates.loc[
-                speed_code_updates["timestamp"].idxmax(), "speed_code"
+                speed_code_updates["timestamp"].idxmax(),
+                "speed_code",
             ]
         )
 
@@ -237,13 +221,17 @@ class SpreadsheetPowerUsersRecord:
     """
 
     def __init__(
-        self, power_user_df: pd.DataFrame, power_user_update_df: pd.DataFrame
+        self,
+        power_user_df: pd.DataFrame,
+        power_user_update_df: pd.DataFrame,
     ) -> None:
         self.power_user_df = power_user_df
         self.power_user_update_df = power_user_update_df
 
     def enumerate_all_users(
-        self, start_date: datetime.date, end_date: datetime.date
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
     ) -> list[tuple[str, datetime.date, datetime.date]]:
         """Generate a list of all users with an active account.
 
@@ -294,12 +282,15 @@ class SpreadsheetPowerUsersRecord:
                         user.last_name,
                         user.start_timestamp.date(),
                         end_timestamp,
-                    )
+                    ),
                 )
         return users
 
     def enumerate_power_users(
-        self, pi_last_name: str, start_date: datetime.date, end_date: datetime.date
+        self,
+        pi_last_name: str,
+        start_date: datetime.date,
+        end_date: datetime.date,
     ) -> list[tuple[str, datetime.date, datetime.date]]:
         """Generate a list of power users associated with this PI.
 
@@ -325,7 +316,8 @@ class SpreadsheetPowerUsersRecord:
         ]
         out_list = []
         for name in out_df.loc[
-            out_df["start_timestamp"].dt.date <= end_date, "last_name"
+            out_df["start_timestamp"].dt.date <= end_date,
+            "last_name",
         ]:
             for term in self.describe_user(name, start_date, end_date):
                 if not term[0]:
@@ -335,7 +327,10 @@ class SpreadsheetPowerUsersRecord:
         return sorted(out_list, key=lambda x: x[1])
 
     def describe_user(
-        self, last_name: str, period_start: datetime.date, period_end: datetime.date
+        self,
+        last_name: str,
+        period_start: datetime.date,
+        period_end: datetime.date,
     ) -> list[
         tuple[Literal[True], datetime.date, datetime.date]
         | tuple[Literal[False], None, None]
@@ -404,7 +399,7 @@ class SpreadsheetPowerUsersRecord:
                 most_recent["end_timestamp"].date(),
             )
             if most_recent["power_user"]
-            else (False, None, None)
+            else (False, None, None),
         ]
 
 

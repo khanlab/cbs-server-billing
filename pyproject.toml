@@ -6,7 +6,7 @@ authors = ["Tristan Kuehn <tkuehn@uwo.ca>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 pandas = "^1.5.3"
 Jinja2 = "^3.1.2"
 openpyxl = "^3.1.1"
@@ -16,6 +16,32 @@ black = "^23.1.0"
 isort = "^5.12.0"
 pylint = "^2.16.2"
 pyright = "^1.1.296"
+ruff = "^0.0.263"
+pandas-stubs = "^2.0.0.230412"
+
+[tool.pylint.main]
+load-plugins = "pylint.extensions.comparetozero,pylint.extensions.redefined_variable_type,pylint.extensions.while_used,pylint.extensions.mccabe,pylint.extensions.typing,pylint.extensions.docstyle,pylint.extensions.private_import,pylint.extensions.broad_try_clause,pylint.extensions.comparison_placement,pylint.extensions.for_any_all,pylint.extensions.check_elif,pylint.extensions.docparams,pylint.extensions.empty_comment,pylint.extensions.code_style,pylint.extensions.eq_without_hash,pylint.extensions.overlapping_exceptions,pylint.extensions.redefined_loop_name,pylint.extensions.bad_builtin,pylint.extensions.no_self_use,pylint.extensions.set_membership,pylint.extensions.consider_ternary_expression,pylint.extensions.confusing_elif,pylint.extensions.emptystring"
+
+[tool.pyright]
+typeCheckingMode = "strict"
+reportInconsistentConstructor = false
+reportMissingParameterType = false
+reportMissingTypeArgument = false
+reportMissingTypeStubs = false
+reportUnnecessaryTypeIgnoreComment = true
+reportUnknownArgumentType = false
+reportUnusedExpression = false
+reportUnknownLambdaType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportUntypedBaseClass = false
+reportUnusedVariable = false
+reportPrivateUsage = false
+
+[tool.ruff]
+select = ["ALL"]
+ignore = ["ANN101", "TCH", "T20"]
 
 [build-system]
 requires = ["poetry-core"]

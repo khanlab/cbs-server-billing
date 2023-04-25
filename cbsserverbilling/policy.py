@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import calendar
 import datetime
+from zoneinfo import ZoneInfo
 
-from jinja2 import Environment
 import pandas as pd
+from jinja2 import Environment
 
 from cbsserverbilling.records import BillableProjectRecord, User
 
@@ -18,6 +19,8 @@ FIRST_POWERUSER_PRICE = 1000
 ADDITIONAL_POWERUSER_PRICE = 500
 
 BILL_TEMPLATE = "cbs_server_bill.tex.jinja"
+
+TIME_ZONE = ZoneInfo("America/Toronto")
 
 
 class BillingPolicy:
@@ -37,8 +40,8 @@ class BillingPolicy:
     ) -> bool:
         """Check whether a billable project is billable in this quarter.
 
-        A billable project is billable if their account was created before the end of the
-        period, and either still open or closed more than two months into the
+        A billable project is billable if their account was created before the end of
+        the period, and either still open or closed more than two months into the
         period.
 
         Parameters
@@ -54,7 +57,9 @@ class BillingPolicy:
             True if the billable project is billable in the specified period.
         """
         end_date = get_end_of_period(
-            start_date.year, start_date.month, self.PERIOD_LENGTH
+            start_date.year,
+            start_date.month,
+            self.PERIOD_LENGTH,
         )
         if record.get_storage_start() > end_date:
             return False
@@ -102,7 +107,9 @@ class BillingPolicy:
             record.get_storage_amount(cutoff_date),
             record.get_storage_amount(
                 get_end_of_period(
-                    start_date.year, start_date.month, self.MIN_BILL_USAGE
+                    start_date.year,
+                    start_date.month,
+                    self.MIN_BILL_USAGE,
                 ),
             ),
         )
@@ -116,7 +123,7 @@ class BillingPolicy:
 
         Parameters
         ----------
-        storage_record
+        record
             Record with all the storage information.
         start_date
             Date in the first month of the quarter.
@@ -153,7 +160,9 @@ class BillingPolicy:
             name, start date, end date, and price.
         """
         end_date = get_end_of_period(
-            start_date.year, start_date.month, self.PERIOD_LENGTH
+            start_date.year,
+            start_date.month,
+            self.PERIOD_LENGTH,
         )
         power_users = record.enumerate_power_users(start_date, end_date)
 
@@ -162,17 +171,19 @@ class BillingPolicy:
         for user in power_users:
             if (
                 pd.notna(user.end_date)
-                and (user.end_date is not None)
                 and user.end_date
                 <= get_end_of_period(
-                    start_date.year, start_date.month, self.MIN_BILL_USAGE
+                    start_date.year,
+                    start_date.month,
+                    self.MIN_BILL_USAGE,
                 )
-            ):
-                price = 0.0
-            elif user.start_date > get_end_of_period(
-                start_date.year,
-                start_date.month,
-                self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
+            ) or (
+                user.start_date
+                > get_end_of_period(
+                    start_date.year,
+                    start_date.month,
+                    self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
+                )
             ):
                 price = 0.0
             elif not first_price_applied:
@@ -203,11 +214,11 @@ class BillingPolicy:
         float
             Total power users price for the billable project for the quarter.
         """
-
         return sum(
             price
             for _, price in self.enumerate_quarterly_power_user_prices(
-                record, quarter_start
+                record,
+                quarter_start,
             )
         )
 
@@ -215,7 +226,7 @@ class BillingPolicy:
         self,
         record: BillableProjectRecord,
         quarter_start: datetime.date,
-    ):
+    ) -> float:
         """Calculate a quarter's total price for one billable project.
 
         Parameters
@@ -231,7 +242,8 @@ class BillingPolicy:
             Total power users price for the billable project for the quarter.
         """
         return self.get_quarterly_storage_price(
-            record, quarter_start
+            record,
+            quarter_start,
         ) + self.get_quarterly_power_user_price(record, quarter_start)
 
     def generate_quarterly_bill_tex(
@@ -244,20 +256,24 @@ class BillingPolicy:
 
         Parameters
         ----------
-        record : BillableProjectRecord
+        record
             Record with all the storage information.
-        quarter_start : date
+        quarter_start
             Date in the first month of the quarter.
+        env
+            jinja2 environment
         """
         # pylint: disable=too-many-locals
         pi_name = record.get_pi_full_name()
         end_date = get_end_of_period(
-            quarter_start.year, quarter_start.month, self.PERIOD_LENGTH
+            quarter_start.year,
+            quarter_start.month,
+            self.PERIOD_LENGTH,
         )
         dates = {
             "start": quarter_start.strftime("%b %d, %Y"),
             "end": end_date.strftime("%b %d, %Y"),
-            "bill": datetime.date.today().strftime("%b %d, %Y"),
+            "bill": datetime.datetime.now(tz=TIME_ZONE).strftime("%b %d, %Y"),
         }
         subtotal = self.get_quarterly_storage_price(record, quarter_start)
         storage = {
@@ -279,17 +295,20 @@ class BillingPolicy:
                 "subtotal": f"{price:.2f}",
             }
             for user, price in self.enumerate_quarterly_power_user_prices(
-                record, quarter_start
+                record,
+                quarter_start,
             )
         ]
         power_users_subtotal = self.get_quarterly_power_user_price(
-            record, quarter_start
+            record,
+            quarter_start,
         )
         total = self.get_quarterly_total_price(
-            record, quarter_start
+            record,
+            quarter_start,
         )
         total = f"{total:.2f}"
-        speed_code = record.get_speed_code(datetime.date.today())
+        speed_code = record.get_speed_code(datetime.datetime.now(tz=TIME_ZONE).date())
 
         template = env.get_template(BILL_TEMPLATE)
         return template.render(
@@ -304,7 +323,11 @@ class BillingPolicy:
         )
 
 
-def get_end_of_period(start_year: int, start_month: int, num_months: int):
+def get_end_of_period(
+    start_year: int,
+    start_month: int,
+    num_months: int,
+) -> datetime.date:
     """Return the end date of a period starting in a given month.
 
     Parameters
@@ -321,12 +344,13 @@ def get_end_of_period(start_year: int, start_month: int, num_months: int):
     date
         Last day of the period.
     """
+    months_in_year = 12
     year = start_year
-    if num_months > 11:
-        year += num_months // 12
-        num_months = num_months % 12
+    if num_months >= months_in_year:
+        year += num_months // months_in_year
+        num_months = num_months % months_in_year
 
-    if num_months == 0 and start_month == 1:
+    if (not num_months) and start_month == 1:
         year -= 1
         month = 12
     elif start_month <= (13 - num_months):

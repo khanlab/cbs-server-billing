@@ -9,6 +9,7 @@ from attrs import define
 @define
 class User:
     """A user of the CBS Server."""
+
     # pylint: disable=too-few-public-methods
     name: str
     power_user: bool
@@ -21,39 +22,19 @@ class BillableProjectRecord(metaclass=ABCMeta):
 
     @abstractmethod
     def get_pi_full_name(self) -> str:
-        """Get a PI's full name.
-
-        Returns
-        -------
-        Full name of the PI
-        """
+        """Get the project PI's full name."""
 
     @abstractmethod
     def get_storage_start(self) -> datetime.date:
-        """Get a PI's storage start date.
-
-        Parameters
-        ----------
-        pi_last_name
-            Last name of the PI.
-
-        Returns
-        -------
-            Date this PI's storage started.
-        """
+        """Get the project's storage start date."""
 
     @abstractmethod
     def get_close_date(self) -> datetime.date | None:
-        """Get a PI's account closure date, if any.
-
-        Returns
-        -------
-            Date this PI's account was closed, if any.
-        """
+        """Get the project's account closure date, if any."""
 
     @abstractmethod
     def get_storage_amount(self, date: datetime.date) -> float:
-        """Get the amount of storage allocated to this PI on a given date.
+        """Get the amount of storage allocated to this project on a given date.
 
         Parameters
         ----------
@@ -73,15 +54,13 @@ class BillableProjectRecord(metaclass=ABCMeta):
         ----------
         date
             Date on which to check the speed code.
-
-        Returns
-        -------
-            Speed code associated with this PI.
         """
 
     @abstractmethod
     def enumerate_all_users(
-        self, start_date: datetime.date, end_date: datetime.date
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
     ) -> list[User]:
         """Generate a list of all users with an active account.
 
@@ -91,17 +70,13 @@ class BillableProjectRecord(metaclass=ABCMeta):
             First date to consider.
         end_date
             Last date to consider.
-
-        Returns
-        -------
-            A tuple for each user who was active on any day in the given
-            range. The tuple contains the user's name, start date, and end
-            date.
         """
 
     @abstractmethod
     def enumerate_power_users(
-        self, start_date: datetime.date, end_date: datetime.date
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
     ) -> list[User]:
         """Generate a list of power users associated with this PI.
 
@@ -111,17 +86,14 @@ class BillableProjectRecord(metaclass=ABCMeta):
             First date to consider.
         end_date
             Last date to consider.
-
-        Returns
-        -------
-            A namedtuple for each user who was active on any day in the given
-            range, where each namedtuple contains the user's last name, start
-            date, and end date, in that order.
         """
 
     @abstractmethod
     def describe_user(
-        self, last_name: str, period_start: datetime.date, period_end: datetime.date
+        self,
+        last_name: str,
+        period_start: datetime.date,
+        period_end: datetime.date,
     ) -> list[User]:
         """Check whether a user was a power user in a given period.
 
@@ -136,7 +108,6 @@ class BillableProjectRecord(metaclass=ABCMeta):
 
         Returns
         -------
-            Tuples describing whether the user was a power user during each
-            of their terms during the period, then if so, the start and end
-            dates of those terms.
+        list[User]
+            A User for each term for which a user was active during the given period.
         """
