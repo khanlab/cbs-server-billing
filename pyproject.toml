@@ -41,7 +41,7 @@ reportPrivateUsage = false
 
 [tool.ruff]
 select = ["ALL"]
-ignore = ["ANN101", "TCH", "T20"]
+ignore = ["ANN101", "ANN102", "TCH", "T20"]
 
 [build-system]
 requires = ["poetry-core"]

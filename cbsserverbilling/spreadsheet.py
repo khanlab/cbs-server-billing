@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import pandas as pd
 from attrs import define
@@ -14,6 +14,48 @@ from cbsserverbilling.records import BillableProjectRecord, User
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+class AccountRequestTuple(NamedTuple):
+    start_timestamp: pd.Timestamp
+    last_name: str
+    email: str
+    pi_last_name: str
+    power_user: bool
+    end_timestamp: pd.Timestamp
+
+
+@define
+class AccountRequest:
+    timestamp: datetime.datetime
+    name: str
+    email: str
+    pi_name: str
+    power_user: bool
+    end_date: datetime.date | None = None
+
+    @classmethod
+    def from_pd_tuple(cls, tuple_: AccountRequestTuple):
+        return cls(
+            timestamp=tuple_.start_timestamp.to_pydatetime(),
+            name=tuple_.last_name,
+            email=tuple_.email,
+            pi_name=tuple_.pi_last_name,
+            power_user=tuple_.power_user,
+            end_date=tuple_.end_timestamp.to_pydatetime().date()
+            if pd.notna(tuple_.end_timestamp)
+            else None,
+        )
+
+
+@define
+class AccountUpdate:
+    timestamp: datetime.datetime
+    name: str
+    email: str
+    pi_name: str | None = None
+    power_user: bool | None = None
+    end_date: datetime.date | None = None
 
 
 @define
@@ -258,7 +300,7 @@ class SpreadsheetPowerUsersRecord:
         self,
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> list[tuple[str, datetime.date, datetime.date]]:
+    ) -> list[User]:
         """Generate a list of all users with an active account.
 
         Parameters
@@ -319,9 +361,7 @@ class SpreadsheetPowerUsersRecord:
                 raise InvalidUpdateError(str(unused_update))
             used_update = False
             for term in [
-                term
-                for term in update_terms
-                if term.name == unused_update.last_name
+                term for term in update_terms if term.name == unused_update.last_name
             ]:
                 if (term.end_date) and (unused_update.timestamp.date() > term.end_date):
                     continue
