@@ -1,20 +1,46 @@
 """Interface for getting raw CBS Server usage information."""
 
+from __future__ import annotations
+
 import datetime
 from abc import ABCMeta, abstractmethod
+from collections.abc import Iterable
 
-from attrs import define
+from attrs import Attribute, define, field
 
 
-@define
-class User:
+def _check_dates(
+    instance: User,
+    _: Attribute[datetime.date | None],
+    value: datetime.date | None,
+) -> None:
+    if value and (value < instance.start_date):
+        raise ValueError("End date must be later than start date.")
+
+
+@define(frozen=True)
+class User(metaclass=ABCMeta):
     """A user of the CBS Server."""
 
     # pylint: disable=too-few-public-methods
     name: str
-    power_user: bool
+    email: str
     start_date: datetime.date
-    end_date: datetime.date | None = None
+    end_date: datetime.date | None = field(default=None, validator=[_check_dates])
+
+    def is_active(self, date: datetime.date) -> bool:
+        """Check if the user is active on a given date."""
+        return (self.start_date <= date) and (
+            (not self.end_date) or (self.end_date >= date)
+        )
+
+    @abstractmethod
+    def is_power_user(self, date: datetime.date) -> bool:
+        """Check whether a user was a power user on this date."""
+
+    @abstractmethod
+    def get_pi_name(self, date: datetime.date) -> str:
+        """Check a user's PI on this date."""
 
 
 class BillableProjectRecord(metaclass=ABCMeta):
@@ -61,7 +87,7 @@ class BillableProjectRecord(metaclass=ABCMeta):
         self,
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> list[User]:
+    ) -> Iterable[User]:
         """Generate a list of all users with an active account.
 
         Parameters
@@ -77,7 +103,7 @@ class BillableProjectRecord(metaclass=ABCMeta):
         self,
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> list[User]:
+    ) -> Iterable[User]:
         """Generate a list of power users associated with this PI.
 
         Parameters
@@ -86,28 +112,4 @@ class BillableProjectRecord(metaclass=ABCMeta):
             First date to consider.
         end_date
             Last date to consider.
-        """
-
-    @abstractmethod
-    def describe_user(
-        self,
-        last_name: str,
-        period_start: datetime.date,
-        period_end: datetime.date,
-    ) -> list[User]:
-        """Check whether a user was a power user in a given period.
-
-        Parameters
-        ----------
-        last_name
-            The user's last name.
-        period_start
-            First day of the period to check.
-        period_end
-            Last day of the period to check.
-
-        Returns
-        -------
-        list[User]
-            A User for each term for which a user was active during the given period.
         """

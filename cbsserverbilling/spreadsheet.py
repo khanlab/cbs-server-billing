@@ -5,10 +5,12 @@ from __future__ import annotations
 import datetime
 import logging
 import os
-from typing import Literal, NamedTuple
+from collections.abc import Iterable
+from typing import NamedTuple
 
 import pandas as pd
-from attrs import define
+from attrs import Attribute, define, evolve, field
+from typing_extensions import Self
 
 from cbsserverbilling.records import BillableProjectRecord, User
 
@@ -16,17 +18,93 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+@define(frozen=True)
+class Update:
+    """An update to a user."""
+
+    date: datetime.date
+    power_user: bool | None = None
+    pi_name: str | None = None
+
+
+class InvalidUserError(Exception):
+    """Exception raised when a user is misspecified."""
+
+    def __init__(self, user: User, missing_attrs: str) -> None:
+        """Information about the misspecified user."""
+        super().__init__(f"User {user} is missing required info {missing_attrs}")
+
+
+def _both_defined(
+    instance: UpdateUser,
+    _: Attribute[frozenset[Update]],
+    value: frozenset[Update],
+) -> None:
+    if not [update for update in value if update.power_user is not None]:
+        raise InvalidUserError(instance, "power_user")
+    if not [update for update in value if update.pi_name]:
+        raise InvalidUserError(instance, "pi_name")
+
+
+class InactiveUserError(Exception):
+    """Exception raised when a user operated on while inactive."""
+
+    def __init__(self, user: User, date: datetime.date) -> None:
+        """Information about the inactive user."""
+        super().__init__(f"User {user} is inactive on date {date}")
+
+
+@define(frozen=True)
+class UpdateUser(User):
+    """A user with updates to handle its changes."""
+
+    updates: frozenset[Update] = field(default=frozenset(), validator=[_both_defined])
+
+    def check_valid_date(self, date: datetime.date) -> None:
+        """Check that the user was active on this date."""
+        if not self.is_active(date):
+            raise InactiveUserError(self, date)
+
+    def is_power_user(self, date: datetime.date) -> bool:
+        """Check whether a user was a power user on this date."""
+        self.check_valid_date(date)
+        return max(  # type: ignore[reportGeneralTypeIssues]
+            (
+                update
+                for update in self.updates
+                if (update.power_user is not None) and (update.date <= date)
+            ),
+            key=lambda update: update.date,
+        ).power_user
+
+    def get_pi_name(self, date: datetime.date) -> str:
+        """Check a user's PI on this date."""
+        self.check_valid_date(date)
+        return max(  # type: ignore[reportGeneralTypeIssues]
+            (
+                update
+                for update in self.updates
+                if (update.pi_name is not None) and (update.date <= date)
+            ),
+            key=lambda update: update.date,
+        ).pi_name
+
+
 class AccountRequestTuple(NamedTuple):
+    """Tuple describing an account request from pandas."""
+
     start_timestamp: pd.Timestamp
-    last_name: str
-    email: str
-    pi_last_name: str
-    power_user: bool
+    last_name: pd.StringDtype
+    email: pd.StringDtype
+    pi_last_name: pd.StringDtype
+    power_user: pd.BooleanDtype
     end_timestamp: pd.Timestamp
 
 
 @define
 class AccountRequest:
+    """Dataclass describing a new account request."""
+
     timestamp: datetime.datetime
     name: str
     email: str
@@ -35,27 +113,170 @@ class AccountRequest:
     end_date: datetime.date | None = None
 
     @classmethod
-    def from_pd_tuple(cls, tuple_: AccountRequestTuple):
+    def from_pd_tuple(cls, tuple_: AccountRequestTuple) -> Self:
+        """Generate a request from a pandas tuple."""
         return cls(
             timestamp=tuple_.start_timestamp.to_pydatetime(),
-            name=tuple_.last_name,
-            email=tuple_.email,
-            pi_name=tuple_.pi_last_name,
-            power_user=tuple_.power_user,
+            name=str(tuple_.last_name),
+            email=str(tuple_.email),
+            pi_name=str(tuple_.pi_last_name),
+            power_user=bool(tuple_.power_user),
             end_date=tuple_.end_timestamp.to_pydatetime().date()
             if pd.notna(tuple_.end_timestamp)
             else None,
         )
 
+    def create_user(self) -> UpdateUser:
+        """Generate a new user from this request."""
+        return UpdateUser(
+            name=self.name,
+            email=self.email,
+            start_date=self.timestamp.date(),
+            end_date=self.end_date,
+            updates=frozenset(
+                [
+                    Update(
+                        date=self.timestamp.date(),
+                        power_user=self.power_user,
+                        pi_name=self.pi_name,
+                    ),
+                ],
+            ),
+        )
+
+    def update_user(self, user: UpdateUser) -> UpdateUser:
+        """Update an existing user from this request."""
+        update = Update(
+            pi_name=self.pi_name,
+            power_user=self.power_user,
+            date=self.timestamp.date(),
+        )
+        return evolve(
+            user,
+            end_date=self.end_date,
+            updates=user.updates | frozenset([update]),
+        )
+
+    def handle(self, existing_users: Iterable[UpdateUser]) -> list[UpdateUser]:
+        """Handle this request given some existing users."""
+        if self.email in {user.email for user in existing_users}:
+            to_update = max(
+                (user for user in existing_users if user.email == self.email),
+                key=lambda user: user.start_date,
+            )
+            return list(
+                set(existing_users) - {to_update} | {self.update_user(to_update)},
+            )
+        return [*existing_users, self.create_user()]
+
+
+class AccountUpdateTuple(NamedTuple):
+    """Tuple describing an account request from pandas."""
+
+    timestamp: pd.Timestamp
+    last_name: pd.StringDtype
+    email: pd.StringDtype
+    pi_last_name: str
+    new_power_user: bool
+    new_end_timestamp: pd.Timestamp
+
+
+class InapplicableUpdateError(Exception):
+    """Exception raised when an error can't be applied."""
+
+    def __init__(self, update: AccountUpdate) -> None:
+        """Describe the update problem."""
+        super().__init__(f"There is no user to which to apply update {update}")
+
+
+class UserAlreadyActiveError(Exception):
+    """Exception raised when an active user is reinstated."""
+
+    def __init__(self, user: UpdateUser, update: AccountUpdate) -> None:
+        """Describe the update problem."""
+        super().__init__(f"User {user} can't be reinstated by update {update}")
+
 
 @define
 class AccountUpdate:
+    """Dataclass describing an account update."""
+
     timestamp: datetime.datetime
     name: str
     email: str
     pi_name: str | None = None
     power_user: bool | None = None
     end_date: datetime.date | None = None
+
+    @classmethod
+    def from_pd_tuple(cls, tuple_: AccountUpdateTuple) -> Self:
+        """Generate from a pandas tuple."""
+        return cls(
+            timestamp=tuple_.timestamp.to_pydatetime(),
+            name=str(tuple_.last_name),
+            email=str(tuple_.email),
+            pi_name=str(tuple_.pi_last_name) if pd.notna(tuple_.pi_last_name) else None,
+            power_user=bool(tuple_.new_power_user)
+            if pd.notna(tuple_.new_power_user)
+            else None,
+            end_date=tuple_.new_end_timestamp.to_pydatetime().date()
+            if pd.notna(tuple_.new_end_timestamp)
+            else None,
+        )
+
+    def update_user(self, user: UpdateUser) -> UpdateUser:
+        """Update an existing user from this request."""
+        update = Update(
+            date=self.timestamp.date(),
+            power_user=self.power_user,
+            pi_name=self.pi_name,
+        )
+        return evolve(user, updates=user.updates | frozenset([update]))
+
+    def reinstate_user(self, user: UpdateUser) -> UpdateUser:
+        """Reinstate an existing user whose term has expired."""
+        if user.is_active(self.timestamp.date()):
+            raise UserAlreadyActiveError(user, self)
+
+        updates = {"end_date": self.end_date} if self.end_date is not None else {}
+        pi_name = self.pi_name or user.get_pi_name(
+            user.end_date,  # type: ignore[reportGeneralTypeIssues]
+        )
+        power_user = (
+            self.power_user
+            if self.power_user is not None
+            else user.is_power_user(
+                user.end_date,  # type: ignore[reportGeneralTypeIssues]
+            )
+        )
+        return evolve(
+            user,
+            start_date=self.timestamp.date(),
+            **updates,
+            updates=frozenset(
+                [
+                    Update(
+                        date=self.timestamp.date(),
+                        pi_name=pi_name,
+                        power_user=power_user,
+                    ),
+                ],
+            ),
+        )
+
+    def handle(self, existing_users: Iterable[UpdateUser]) -> list[UpdateUser]:
+        """Handle this request given some existing users."""
+        if self.email not in {user.email for user in existing_users}:
+            raise InapplicableUpdateError(self)
+        to_update = max(
+            (user for user in existing_users if user.email == self.email),
+            key=lambda user: user.start_date,
+        )
+        if to_update.is_active(self.timestamp.date()):
+            return list(
+                set(existing_users) - {to_update} | {self.update_user(to_update)},
+            )
+        return [*existing_users, self.reinstate_user(to_update)]
 
 
 @define
@@ -68,6 +289,7 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
     speed_code: str
     open_date: datetime.date
     close_date: datetime.date | None = None
+    has_power_users: bool = False
 
     def get_pi_full_name(self) -> str:
         """Get a PI's full name.
@@ -120,7 +342,7 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
         self,
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> list[User]:
+    ) -> Iterable[User]:
         """Generate a list of all users with an active account.
 
         Parameters
@@ -130,6 +352,42 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
         end_date
             Last date to consider.
         """
+        days = [
+            start_date + datetime.timedelta(days=delta)
+            for delta in range((end_date - start_date).days + 1)
+        ]
+        return [
+            user
+            for user in self.power_users_record.enumerate_all_users(
+                start_date,
+                end_date,
+            )
+            if any((user.get_pi_name(date) == self.pi_last_name) for date in days)
+        ]
+
+    def enumerate_power_users(
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ) -> Iterable[User]:
+        """Generate a list of power users associated with this PI.
+
+        Parameters
+        ----------
+        start_date
+            First date to consider.
+        end_date
+            Last date to consider.
+        """
+        return (
+            self.power_users_record.enumerate_power_users(
+                self.pi_last_name,
+                start_date,
+                end_date,
+            )
+            if self.has_power_users
+            else []
+        )
 
 
 @define
@@ -300,7 +558,7 @@ class SpreadsheetPowerUsersRecord:
         self,
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> list[User]:
+    ) -> list[UpdateUser]:
         """Generate a list of all users with an active account.
 
         Parameters
@@ -319,181 +577,76 @@ class SpreadsheetPowerUsersRecord:
         """
         user_df = self.power_user_df.loc[
             self.power_user_df["start_timestamp"].dt.date < end_date,
-            ["last_name", "start_timestamp", "end_timestamp"],
+            [
+                "last_name",
+                "start_timestamp",
+                "end_timestamp",
+                "email",
+                "pi_last_name",
+                "power_user",
+            ],
         ]
         update_df = self.power_user_update_df.loc[
             (self.power_user_update_df["timestamp"].dt.date < end_date)
             & (pd.notna(self.power_user_update_df["new_end_timestamp"])),
-            ["last_name", "timestamp", "new_end_timestamp"],
+            [
+                "last_name",
+                "timestamp",
+                "new_end_timestamp",
+                "email",
+                "pi_last_name",
+                "new_power_user",
+            ],
         ].assign(applied=False)
-        users = []
-        for term in user_df.itertuples():
-            updates = update_df.loc[
-                (update_df["last_name"] == term.last_name)
-                & (update_df["timestamp"] > term.start_timestamp),
-                :,
-            ]
-            term_end_date: datetime.date | None = (
-                term.end_timestamp.date() if pd.notna(term.end_timestamp) else None
-            )
-            for update in updates.itertuples():
-                if update.applied:
-                    logger.warning(
-                        "Update %s already applied to a different term.",
-                        update,
-                    )
-                if (not term_end_date) or (update.timestamp.date() < term_end_date):
-                    term_end_date = update.new_end_timestamp.date()
-                    update_df.loc[update.Index, "applied"] = True
-            if (not term_end_date) or (term_end_date > start_date):
-                users.append(
-                    User(
-                        name=term.last_name,
-                        power_user=False,
-                        start_date=term.start_timestamp.date(),
-                        end_date=term_end_date,
-                    ),
-                )
-        update_terms = []
-        for unused_update in update_df.loc[~update_df["applied"], :].itertuples():
-            # These should be new terms for expired users.
-            if unused_update.last_name not in {user.name for user in users}:
-                raise InvalidUpdateError(str(unused_update))
-            used_update = False
-            for term in [
-                term for term in update_terms if term.name == unused_update.last_name
-            ]:
-                if (term.end_date) and (unused_update.timestamp.date() > term.end_date):
-                    continue
-                term.end_date = unused_update.new_end_timestamp.date()
-                used_update = True
-                break
-            if not used_update:
-                update_terms.append(
-                    User(
-                        name=unused_update.last_name,
-                        power_user=False,
-                        start_date=unused_update.timestamp.date(),
-                        end_date=unused_update.new_end_timestamp.date(),
-                    ),
-                )
 
-        return users + update_terms
+        users = []
+        requests = [
+            AccountRequest.from_pd_tuple(tuple_)
+            for tuple_ in user_df.itertuples(name="AccountRequestTuple")
+        ]
+        updates = [
+            AccountUpdate.from_pd_tuple(tuple_)
+            for tuple_ in update_df.itertuples(name="AccountUpdateTuple")
+        ]
+        changes = sorted(requests + updates, key=lambda change: change.timestamp)
+        for change in changes:
+            users = change.handle(users)
+
+        return [
+            user
+            for user in users
+            if (not user.end_date) or (user.end_date > start_date)
+        ]
 
     def enumerate_power_users(
         self,
         pi_last_name: str,
         start_date: datetime.date,
         end_date: datetime.date,
-    ) -> list[tuple[str, datetime.date, datetime.date]]:
+    ) -> list[UpdateUser]:
         """Generate a list of power users associated with this PI.
 
         Parameters
         ----------
-        pi_last_name : str
+        pi_last_name
             PI of the users to enumerate.
-        start_date : date
+        start_date
             First date to consider.
-        end_date : date
+        end_date
             Last date to consider.
-
-        Returns
-        -------
-        list of namedtuple
-            A namedtuple for each user who was active on any day in the given
-            range, where each namedtuple contains the user's last name, start
-            date, and end date, in that order.
         """
-        out_df = self.power_user_df.loc[
-            self.power_user_df["pi_last_name"] == pi_last_name,
-            ["last_name", "start_timestamp"],
+        users = self.enumerate_all_users(start_date, end_date)
+        days = [
+            start_date + datetime.timedelta(days=delta)
+            for delta in range((end_date - start_date).days + 1)
         ]
-        out_list = []
-        for name in out_df.loc[
-            out_df["start_timestamp"].dt.date <= end_date,
-            "last_name",
-        ]:
-            for term in self.describe_user(name, start_date, end_date):
-                if not term[0]:
-                    continue
-                out_list.append((name, term[1], term[2]))
-
-        return sorted(out_list, key=lambda x: x[1])
-
-    def describe_user(
-        self,
-        last_name: str,
-        period_start: datetime.date,
-        period_end: datetime.date,
-    ) -> list[
-        tuple[Literal[True], datetime.date, datetime.date]
-        | tuple[Literal[False], None, None]
-    ]:
-        """Check whether a user was a power user in a given period.
-
-        Parameters
-        ----------
-        last_name : str
-            The user's last name.
-        period_start : date
-            First day of the period to check.
-        period_end : date
-            Last day of the period to check.
-
-        Returns
-        -------
-        list of (bool, date or None, date or None)
-            Tuples describing whether the user was a power user during each
-            of their terms during the period, then if so, the start and end
-            dates of those terms.
-        """
-        orig_row = self.power_user_df.loc[
-            (self.power_user_df["last_name"] == last_name)
-            & (self.power_user_df["start_timestamp"].dt.date <= period_end),
-            :,
-        ].copy()
-        if len(orig_row) == 0:
-            return [(False, None, None)]
-
-        # Only want the most recent term
-        most_recent = orig_row.loc[orig_row["start_timestamp"].idxmax()]
-        relevant_updates = self.power_user_update_df.loc[
-            (self.power_user_update_df["last_name"] == last_name)
-            & (self.power_user_update_df["timestamp"].dt.date <= period_end)
-            & (
-                (self.power_user_update_df["new_end_timestamp"].notna())
-                | (self.power_user_update_df["new_power_user"].notna())
-            ),
-            ["timestamp", "new_end_timestamp", "new_power_user"],
-        ]
-        # Only want updates after this term started
-        relevant_updates = relevant_updates.loc[
-            (
-                relevant_updates["timestamp"].dt.date
-                >= most_recent["start_timestamp"].date()
-            ),
-            :,
-        ]
-        for update in relevant_updates.sort_values(by=["timestamp"]).itertuples():
-            if update.timestamp.date() > most_recent["end_timestamp"].date():
-                most_recent = gen_new_term_from_row(most_recent, update)
-            else:
-                most_recent = update_term_from_row(most_recent, update)
-
-        if not (
-            pd.isna(most_recent["end_timestamp"])
-            or most_recent["end_timestamp"].date() >= period_start
-        ):
-            return [(False, None, None)]
-
         return [
-            (
-                True,
-                most_recent["start_timestamp"].date(),
-                most_recent["end_timestamp"].date(),
+            user
+            for user in users
+            if any(
+                ((user.get_pi_name(date) == pi_last_name) and user.is_power_user(date))
+                for date in days
             )
-            if most_recent["power_user"]
-            else (False, None, None),
         ]
 
 
@@ -509,23 +662,6 @@ def gen_new_term_from_row(orig_row: pd.Series, update: pd.Series) -> pd.Series:
             orig_row["power_user"] = True
         else:
             orig_row["power_user"] = False
-    return orig_row
-
-
-def update_term_from_row(orig_row: pd.Series, update: pd.Series):
-    """Update a user's existing term."""
-    if pd.notna(update.new_end_timestamp):
-        orig_row["end_timestamp"] = update.new_end_timestamp
-    if pd.notna(update.new_power_user):
-        if update.new_power_user:
-            if not orig_row["power_user"]:
-                # They became a power user with the update
-                orig_row["power_user"] = True
-                orig_row["start_timestamp"] = update.timestamp
-        elif orig_row["power_user"]:
-            # They stopped being a power user at the update
-            # timestamp, so update appropriately.
-            orig_row["end_timestamp"] = update.timestamp
     return orig_row
 
 
