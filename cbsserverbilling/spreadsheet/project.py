@@ -17,15 +17,7 @@ class ProjectUpdate:
 
     date: datetime.date
     speed_code: str | None
-    storage: float | None
-
-
-class InvalidProjectError(Exception):
-    """Exception raised when a user is misspecified."""
-
-    def __init__(self, project: Project, missing_attrs: str) -> None:
-        """Information about the misspecified user."""
-        super().__init__(f"Project {project} is missing required info {missing_attrs}")
+    additional_storage: float | None
 
 
 def _both_defined(
@@ -33,8 +25,8 @@ def _both_defined(
     _: Attribute[frozenset[ProjectUpdate]],
     value: frozenset[ProjectUpdate],
 ) -> None:
-    if not [update for update in value if update.storage is not None]:
-        raise InvalidProjectError(instance, "storage")
+    if not [update for update in value if update.additional_storage is not None]:
+        raise InvalidProjectError(instance, "additional_storage")
     if not [update for update in value if update.speed_code]:
         raise InvalidProjectError(instance, "speed code")
 
@@ -46,11 +38,40 @@ class Project:
     open_date: datetime.date
     email: str
     pi_last_name: str
+    pi_full_name: str | None = None
     close_date: datetime.date | None = None
     updates: frozenset[ProjectUpdate] = field(
         default=frozenset(),
         validator=[_both_defined],
     )
+
+    def is_active(self, date: datetime.date) -> bool:
+        """Check if the project was active on a date."""
+        return (date >= self.open_date) and (
+            (not self.close_date) or date <= self.close_date
+        )
+
+    def check_valid_date(self, date: datetime.date) -> None:
+        """Raise an exception if the project wasn't active on a date."""
+        if not self.is_active(date):
+            raise InactiveProjectError(self, date)
+
+    def get_storage(self, date: datetime.date) -> float:
+        """Check a project's storage on this date."""
+        self.check_valid_date(date)
+        return sum(
+            update.additional_storage
+            for update in self.updates
+            if update.additional_storage
+        )
+
+    def get_speed_code(self, date: datetime.date) -> str:
+        """Check a project's speed code on this date."""
+        self.check_valid_date(date)
+        return max(  # type: ignore[reportGeneralTypeIssues]
+            (update for update in self.updates if update.speed_code),
+            key=lambda update: update.date,
+        ).speed_code
 
 
 class NewPiTuple(NamedTuple):
@@ -97,7 +118,7 @@ class NewPiRequest:
                         ProjectUpdate(
                             date=self.timestamp.date(),
                             speed_code=self.speed_code,
-                            storage=self.storage,
+                            additional_storage=self.storage,
                         ),
                     },
                 ),
@@ -148,26 +169,36 @@ class PiUpdate:
         candidates = [
             project for project in projects if project.pi_last_name == self.name
         ]
-        if len(candidates) == 1:
-            to_update = candidates[0]
-        return list(set(projects) - {candidates[0]} | {evolve(to_update)})
-        return [
-            *projects,
-            Project(
-                open_date=self.timestamp.date(),
-                pi_last_name=self.name,
-                email=self.email,
-                updates=frozenset(
-                    {
-                        ProjectUpdate(
-                            date=self.timestamp.date(),
-                            speed_code=self.speed_code,
-                            storage=self.storage,
-                        ),
-                    },
+        if not candidates:
+            raise InvalidPiUpdateError(self)
+        to_update = (
+            candidates[0]
+            if len(candidates) == 1
+            else min(candidates, key=lambda project: project.open_date)
+        )
+
+        new_end_date = (
+            {"end_date": self.timestamp.date()} if self.account_closed else {}
+        )
+        return list(
+            set(projects) - {to_update}
+            | {
+                evolve(
+                    to_update,
+                    updates=to_update.updates
+                    | frozenset(
+                        [
+                            ProjectUpdate(
+                                date=self.timestamp.date(),
+                                additional_storage=self.additional_storage,
+                                speed_code=self.speed_code,
+                            ),
+                        ],
+                    ),
+                    **new_end_date,
                 ),
-            ),
-        ]
+            },
+        )
 
 
 def gen_all_projects(
@@ -175,7 +206,8 @@ def gen_all_projects(
     pi_update_df: pd.DataFrame,
     start_date: datetime.date,
     end_date: datetime.date,
-) -> None:
+) -> list[Project]:
+    """Generate all projects defined in a period."""
     changes = [
         NewPiRequest.from_pd_tuple(tuple_)
         for tuple_ in pi_df.loc[
@@ -196,5 +228,38 @@ def gen_all_projects(
             ],
         ].itertuples()
     ]
+    projects: list[Project] = []
     for change in sorted(changes, key=lambda change: change.timestamp):
-        print(change)
+        projects = change.handle(projects)
+
+    return [
+        project
+        for project in projects
+        if ((not project.close_date) or (project.close_date >= start_date))
+    ]
+
+
+class InvalidProjectError(Exception):
+    """Exception raised when a user is misspecified."""
+
+    def __init__(self, project: Project, missing_attrs: str) -> None:
+        """Information about the misspecified user."""
+        super().__init__(f"Project {project} is missing required info {missing_attrs}")
+
+
+class InactiveProjectError(Exception):
+    """Exception raised when a project is operated on while inactive."""
+
+    def __init__(self, project: Project, date: datetime.date) -> None:
+        """Information about the inactive project."""
+        super().__init__(f"Project {project} is inactive on date {date}")
+
+
+class InvalidPiUpdateError(Exception):
+    """Exception raised when a PI update has no corresponding PI."""
+
+    def __init__(self, update: PiUpdate) -> None:
+        """Information about the misspecified update."""
+        super().__init__(
+            f"There is no PI account with the last name of PI update {update}.",
+        )
