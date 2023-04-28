@@ -62,7 +62,7 @@ class Project:
         return sum(
             update.additional_storage
             for update in self.updates
-            if update.additional_storage
+            if (update.date <= date) and update.additional_storage
         )
 
     def get_speed_code(self, date: datetime.date) -> str:
@@ -178,7 +178,7 @@ class PiUpdate:
         )
 
         new_end_date = (
-            {"end_date": self.timestamp.date()} if self.account_closed else {}
+            {"close_date": self.timestamp.date()} if self.account_closed else {}
         )
         return list(
             set(projects) - {to_update}

@@ -15,7 +15,7 @@ def _check_dates(
     value: datetime.date | None,
 ) -> None:
     if value and (value < instance.start_date):
-        raise ValueError("End date must be later than start date.")
+        raise UserDateRangeError(instance, instance.start_date, value)
 
 
 @define(frozen=True)
@@ -45,6 +45,10 @@ class User(metaclass=ABCMeta):
 
 class BillableProjectRecord(metaclass=ABCMeta):
     """Record of one billable project."""
+
+    @abstractmethod
+    def get_pi_last_name(self) -> str:
+        """Get the project PI's last name."""
 
     @abstractmethod
     def get_pi_full_name(self) -> str:
@@ -113,3 +117,18 @@ class BillableProjectRecord(metaclass=ABCMeta):
         end_date
             Last date to consider.
         """
+
+
+class UserDateRangeError(ValueError):
+    """Exception raised when a user's date range is invalid."""
+
+    def __init__(
+        self,
+        user: User,
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ) -> None:
+        """Describe the problem."""
+        super().__init__(
+            f"User {user} has end date {end_date} later than start date {start_date}",
+        )

@@ -174,3 +174,32 @@ def add_pis_to_user_df(pi_df: pd.DataFrame, user_df: pd.DataFrame) -> pd.DataFra
     )
     pi_user_df = pi_user_df.rename(columns={"pi_is_power_user": "power_user"})
     return pd.concat([user_df, pi_user_df], ignore_index=True)
+
+
+def preprocess_forms(
+    pi_path: os.PathLike[str] | str,
+    user_path: os.PathLike[str] | str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load Google Forms data and rearrange it.
+
+    Specifically, this loads both relevant sheets and adds PI accounts to the
+    users table.
+
+    Parameters
+    ----------
+    pi_path : str
+        Path to the PI form data
+    user_path : str
+        Path to the user form data
+
+    Returns
+    -------
+    tuple of DataFrame
+        A tuple containing the resulting PI data frame then the user data
+        frame.
+    """
+    pi_df = load_pi_df(pi_path)
+    user_df = load_user_df(user_path)
+    user_df = add_pis_to_user_df(pi_df, user_df)
+
+    return (pi_df, user_df)

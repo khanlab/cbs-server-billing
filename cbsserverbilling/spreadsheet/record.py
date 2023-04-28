@@ -9,9 +9,14 @@ from collections.abc import Iterable
 import pandas as pd
 from attrs import define
 
+from cbsserverbilling.dateutils import get_days_in_range
 from cbsserverbilling.records import BillableProjectRecord, User
 from cbsserverbilling.spreadsheet.project import Project, gen_all_projects
-from cbsserverbilling.spreadsheet.user import UpdateUser, enumerate_all_users
+from cbsserverbilling.spreadsheet.user import (
+    AccountUpdate,
+    UpdateUser,
+    enumerate_all_users,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +29,10 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
     users: Iterable[UpdateUser]
     has_power_users: bool
     project: Project
+
+    def get_pi_last_name(self) -> str:
+        """Get the project PI's last name."""
+        return self.project.pi_last_name
 
     def get_pi_full_name(self) -> str:
         """Get a PI's full name."""
@@ -73,15 +82,16 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
         end_date
             Last date to consider.
         """
-        days = [
-            start_date + datetime.timedelta(days=delta)
-            for delta in range((end_date - start_date).days + 1)
-        ]
+        days = get_days_in_range(start_date, end_date)
         return [
             user
             for user in self.users
             if any(
-                (user.get_pi_name(date) == self.project.pi_last_name) for date in days
+                (
+                    user.is_active(date)
+                    and (user.get_pi_name(date) == self.project.pi_last_name)
+                )
+                for date in days
             )
         ]
 
@@ -101,16 +111,14 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
         """
         if not self.has_power_users:
             return []
-        days = [
-            start_date + datetime.timedelta(days=delta)
-            for delta in range((end_date - start_date).days + 1)
-        ]
+        days = get_days_in_range(start_date, end_date)
         return [
             user
             for user in self.users
             if any(
                 (
-                    (user.get_pi_name(date) == self.project.pi_last_name)
+                    user.is_active(date)
+                    and (user.get_pi_name(date) == self.project.pi_last_name)
                     and user.is_power_user(date)
                 )
                 for date in days
@@ -129,6 +137,21 @@ def gen_all_project_records(  # noqa: PLR0913
     """Generate a record for each project in the spreadsheets."""
     projects = gen_all_projects(pi_df, pi_update_df, start_date, end_date)
     users = enumerate_all_users(user_df, user_update_df, start_date, end_date)
+    for project in projects:
+        if project.email == "ymohsenz@uwo.ca":
+            print(project)
+        if project.close_date:
+            print(project)
+            users = AccountUpdate(
+                timestamp=datetime.datetime.combine(
+                    project.close_date, datetime.time(),
+                ),
+                name=project.pi_last_name,
+                email=project.email,
+                end_date=project.close_date,
+            ).handle(users)
+
+    check_all_power_users(users, projects, start_date, end_date)
 
     used_pis = set()
     records = []
@@ -142,3 +165,42 @@ def gen_all_project_records(  # noqa: PLR0913
         records.append(record)
         used_pis.add(project.pi_last_name)
     return records
+
+
+def check_all_power_users(
+    users: Iterable[User],
+    projects: Iterable[Project],
+    start_date: datetime.date,
+    end_date: datetime.date,
+) -> None:
+    """Ensure that all power users are associated with a project."""
+    days = get_days_in_range(start_date, end_date)
+    all_pi_names = {project.pi_last_name for project in projects}
+    for user in users:
+        if user.email == "kgilber7@uwo.ca":
+            print(user)
+        if any(
+            (
+                user.is_active(date)
+                and (user.get_pi_name(date) not in all_pi_names)
+                and user.is_power_user(date)
+            )
+            for date in days
+        ):
+            raise UnattachedUserError(user, start_date, end_date)
+
+
+class UnattachedUserError(Exception):
+    """Exception raised when a user has no active project."""
+
+    def __init__(
+        self,
+        user: User,
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ) -> None:
+        """Describe the problem."""
+        super().__init__(
+            f"User {user} has no real PI at some point from "
+            f"{start_date.isoformat()} to {end_date.isoformat()}",
+        )

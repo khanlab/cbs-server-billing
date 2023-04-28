@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import calendar
 import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 from jinja2 import Environment
 
+from cbsserverbilling.dateutils import get_days_in_range, get_end_of_period
 from cbsserverbilling.records import BillableProjectRecord, User
 
 # Storage price in dollars/TB/year
@@ -164,27 +164,27 @@ class BillingPolicy:
             start_date.month,
             self.PERIOD_LENGTH,
         )
+        end_cutoff = get_end_of_period(
+            start_date.year,
+            start_date.month,
+            self.MIN_BILL_USAGE,
+        )
+        start_cutoff = get_end_of_period(
+            start_date.year,
+            start_date.month,
+            self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
+        )
+        min_days = max((end_cutoff - start_date).days, (end_date - start_cutoff).days)
         power_users = record.enumerate_power_users(start_date, end_date)
 
         price_record = []
         first_price_applied = False
+        period_days = get_days_in_range(start_date, end_date)
         for user in power_users:
-            if (
-                pd.notna(user.end_date)
-                and user.end_date
-                <= get_end_of_period(
-                    start_date.year,
-                    start_date.month,
-                    self.MIN_BILL_USAGE,
-                )
-            ) or (
-                user.start_date
-                > get_end_of_period(
-                    start_date.year,
-                    start_date.month,
-                    self.PERIOD_LENGTH - self.MIN_BILL_USAGE,
-                )
-            ):
+            active_days = {date for date in period_days if user.is_active(date)}
+            power_user_days = {date for date in active_days if user.is_power_user(date)}
+            charge = len(power_user_days) >= min_days
+            if not charge:
                 price = 0.0
             elif not first_price_applied:
                 price = self.FIRST_POWER_USER_PRICE * 0.25
@@ -288,7 +288,7 @@ class BillingPolicy:
                 "start_date": user.start_date.strftime("%b %d, %Y"),
                 "end_date": (
                     "N/A"
-                    if ((not user.end_date) or pd.isna(user.end_date))
+                    if (not user.end_date)
                     else user.end_date.strftime("%b %d, %Y")
                 ),
                 "price": f"{price * 4:.2f}",
@@ -321,43 +321,3 @@ class BillingPolicy:
             total=total,
             speed_code=speed_code,
         )
-
-
-def get_end_of_period(
-    start_year: int,
-    start_month: int,
-    num_months: int,
-) -> datetime.date:
-    """Return the end date of a period starting in a given month.
-
-    Parameters
-    ----------
-    start_year : int
-        Starting year of the period.
-    start_month : int
-        Starting month of the period.
-    num_months : int
-        Length in months of the period.
-
-    Returns
-    -------
-    date
-        Last day of the period.
-    """
-    months_in_year = 12
-    year = start_year
-    if num_months >= months_in_year:
-        year += num_months // months_in_year
-        num_months = num_months % months_in_year
-
-    if (not num_months) and start_month == 1:
-        year -= 1
-        month = 12
-    elif start_month <= (13 - num_months):
-        year = start_year
-        month = start_month + (num_months - 1)
-    else:
-        year = start_year + 1
-        month = start_month - (13 - num_months)
-
-    return datetime.date(year, month, calendar.monthrange(year, month)[-1])

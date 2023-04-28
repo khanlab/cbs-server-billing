@@ -194,7 +194,8 @@ class AccountUpdate:
             power_user=self.power_user,
             pi_name=self.pi_name,
         )
-        return evolve(user, updates=user.updates | frozenset([update]))
+        end_date = {"end_date": self.end_date} if self.end_date else {}
+        return evolve(user, updates=user.updates | frozenset([update]), **end_date)
 
     def reinstate_user(self, user: UpdateUser) -> UpdateUser:
         """Reinstate an existing user whose term has expired."""
@@ -280,8 +281,7 @@ def enumerate_all_users(
         ],
     ]
     update_df = power_user_update_df.loc[
-        (power_user_update_df["timestamp"].dt.date < end_date)
-        & (pd.notna(power_user_update_df["new_end_timestamp"])),
+        power_user_update_df["timestamp"].dt.date < end_date,
         [
             "last_name",
             "timestamp",
