@@ -202,8 +202,6 @@ class AccountUpdate:
         if user.is_active(self.timestamp.date()):
             raise UserAlreadyActiveError(user, self)
 
-        print(f"{self}, {user}")
-
         updates = {"end_date": self.end_date} if self.end_date is not None else {}
         pi_name = self.pi_name or user.get_pi_name(
             user.end_date,  # type: ignore[reportGeneralTypeIssues]

@@ -187,8 +187,6 @@ def check_all_power_users(
     days = get_days_in_range(start_date, end_date)
     all_pi_names = {project.pi_last_name for project in projects}
     for user in users:
-        if user.email == "mshahba9@uwo.ca":
-            print(user)
         if any(
             (
                 user.is_active(date)

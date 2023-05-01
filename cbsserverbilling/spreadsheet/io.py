@@ -23,7 +23,7 @@ def load_user_df(user_form_path: os.PathLike[str] | str) -> pd.DataFrame:
     user_df = user_df.rename(
         columns={
             "Completion time": "start_timestamp",
-            "Email": "email",
+            "UWO.CA email address": "email",
             "First name": "first_name",
             "Last name": "last_name",
             "PI last name": "pi_last_name",
@@ -54,7 +54,7 @@ def load_user_update_df(user_update_form_path: os.PathLike[str] | str) -> pd.Dat
     user_update_df = user_update_df.rename(
         columns={
             "Completion time": "timestamp",
-            "Email": "email",
+            "UWO.CA email address": "email",
             "First name": "first_name",
             "Last name": "last_name",
             "PI Last name (e.g., Smith)": "pi_last_name",
@@ -87,7 +87,7 @@ def load_pi_df(pi_form_path: os.PathLike[str] | str) -> pd.DataFrame:
     pi_df = pi_df.rename(
         columns={
             "Completion time": "start_timestamp",
-            "Email": "email",
+            "UWO email address": "email",
             "First Name": "first_name",
             "Last Name": "last_name",
             (
@@ -122,7 +122,7 @@ def load_storage_update_df(
     storage_update_df = storage_update_df.rename(
         columns={
             "Completion time": "timestamp",
-            "Email": "email",
+            "UWO.CA email address": "email",
             "First name": "first_name",
             "Last name": "last_name",
             ("Additional storage needs (in TB)"): "new_storage",
