@@ -31,7 +31,9 @@ def load_user_df(user_form_path: os.PathLike[str] | str) -> pd.DataFrame:
             "Do you need your account to be a Power User account": "power_user",
         },
     )
-    user_df = user_df.assign(power_user=user_df["power_user"].str.strip() == "Yes")
+    user_df = user_df.assign(
+        power_user=user_df["power_user"].str.strip().str.lower() == "yes",
+    )
     return user_df
 
 
@@ -65,9 +67,9 @@ def load_user_update_df(user_update_form_path: os.PathLike[str] | str) -> pd.Dat
         },
     )
     user_update_df = user_update_df.assign(
-        agree=user_update_df["agree"].str.strip() == "Yes",
+        agree=user_update_df["agree"].str.strip().str.lower() == "yes",
         new_power_user=user_update_df["new_power_user"].map(
-            lambda x: None if pd.isna(x) else x.strip() == "Power user",
+            lambda x: None if pd.isna(x) else x.strip().lower() == "power user",
         ),
     )
     return user_update_df
@@ -96,7 +98,7 @@ def load_pi_df(pi_form_path: os.PathLike[str] | str) -> pd.DataFrame:
         },
     )
     pi_df = pi_df.assign(
-        pi_is_power_user=pi_df["pi_is_power_user"].str.strip() == "Yes",
+        pi_is_power_user=pi_df["pi_is_power_user"].str.strip().str.lower() == "yes",
     )
     return pi_df
 
@@ -132,74 +134,8 @@ def load_storage_update_df(
         },
     )
     storage_update_df = storage_update_df.assign(
-        agree=storage_update_df["agree"].str.strip() == "Yes",
-        account_closed=storage_update_df["account_closed"].str.strip() == "Yes",
+        agree=storage_update_df["agree"].str.strip().str.lower() == "yes",
+        account_closed=storage_update_df["account_closed"].str.strip().str.lower()
+        == "yes",
     )
     return storage_update_df
-
-
-def add_pis_to_user_df(pi_df: pd.DataFrame, user_df: pd.DataFrame) -> pd.DataFrame:
-    """Add PI user accounts to the user dataframe.
-
-    PI user account information is stored in the PI Google Forms data by
-    default, but is easier to work with if it's grouped with the other user
-    account data.
-
-    Parameters
-    ----------
-    pi_df
-        Data frame including PI storage and PI account power user information.
-    user_df
-        Data frame including user account information.
-
-    Returns
-    -------
-    DataFrame
-        User dataframe with rows describing PI user accounts appended to the
-        end.
-    """
-    pi_user_df = pi_df.loc[
-        :,
-        [
-            "start_timestamp",
-            "email",
-            "first_name",
-            "last_name",
-            "pi_is_power_user",
-        ],
-    ]
-    pi_user_df = pi_user_df.assign(
-        pi_last_name=pi_user_df["last_name"],
-        end_timestamp=(None),
-    )
-    pi_user_df = pi_user_df.rename(columns={"pi_is_power_user": "power_user"})
-    return pd.concat([user_df, pi_user_df], ignore_index=True)
-
-
-def preprocess_forms(
-    pi_path: os.PathLike[str] | str,
-    user_path: os.PathLike[str] | str,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load Google Forms data and rearrange it.
-
-    Specifically, this loads both relevant sheets and adds PI accounts to the
-    users table.
-
-    Parameters
-    ----------
-    pi_path : str
-        Path to the PI form data
-    user_path : str
-        Path to the user form data
-
-    Returns
-    -------
-    tuple of DataFrame
-        A tuple containing the resulting PI data frame then the user data
-        frame.
-    """
-    pi_df = load_pi_df(pi_path)
-    user_df = load_user_df(user_path)
-    user_df = add_pis_to_user_df(pi_df, user_df)
-
-    return (pi_df, user_df)

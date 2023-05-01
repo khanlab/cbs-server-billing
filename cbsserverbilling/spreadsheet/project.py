@@ -10,6 +10,8 @@ import pandas as pd
 from attrs import Attribute, define, evolve, field
 from typing_extensions import Self
 
+from cbsserverbilling.spreadsheet.user import AccountRequest, AccountUpdate
+
 
 @define(frozen=True)
 class ProjectUpdate:
@@ -81,6 +83,7 @@ class NewPiTuple(NamedTuple):
     email: pd.StringDtype
     last_name: pd.StringDtype
     speed_code: pd.StringDtype
+    pi_is_power_user: bool
     storage: float
 
 
@@ -92,6 +95,7 @@ class NewPiRequest:
     name: str
     email: str
     speed_code: str
+    power_user: bool
     storage: float
 
     @classmethod
@@ -102,6 +106,7 @@ class NewPiRequest:
             name=str(tuple_.last_name),
             email=str(tuple_.email),
             speed_code=str(tuple_.speed_code),
+            power_user=bool(tuple_.pi_is_power_user),
             storage=float(tuple_.storage),
         )
 
@@ -124,6 +129,17 @@ class NewPiRequest:
                 ),
             ),
         ]
+
+    def gen_user_request(self) -> AccountRequest:
+        """Generate an account request corresponding to this PI."""
+        return AccountRequest(
+            timestamp=self.timestamp,
+            name=self.name,
+            email=self.email,
+            pi_name=self.name,
+            power_user=self.power_user,
+            end_date=None,
+        )
 
 
 class PiUpdateTuple(NamedTuple):
@@ -200,19 +216,37 @@ class PiUpdate:
             },
         )
 
+    def gen_user_request(self) -> AccountUpdate | None:
+        """Generate an account request corresponding to this PI."""
+        if not self.account_closed:
+            return None
+        return AccountUpdate(
+            timestamp=self.timestamp,
+            name=self.name,
+            email=self.email,
+            end_date=self.timestamp.date(),
+        )
+
 
 def gen_all_projects(
     pi_df: pd.DataFrame,
     pi_update_df: pd.DataFrame,
     start_date: datetime.date,
     end_date: datetime.date,
-) -> list[Project]:
+) -> tuple[list[Project], Iterable[AccountRequest | AccountUpdate]]:
     """Generate all projects defined in a period."""
     changes = [
         NewPiRequest.from_pd_tuple(tuple_)
         for tuple_ in pi_df.loc[
             pi_df["start_timestamp"].dt.date <= end_date,
-            ["start_timestamp", "email", "last_name", "speed_code", "storage"],
+            [
+                "start_timestamp",
+                "email",
+                "last_name",
+                "speed_code",
+                "storage",
+                "pi_is_power_user",
+            ],
         ].itertuples()
     ] + [
         PiUpdate.from_pd_tuple(tuple_)
@@ -232,11 +266,15 @@ def gen_all_projects(
     for change in sorted(changes, key=lambda change: change.timestamp):
         projects = change.handle(projects)
 
+    user_changes = [
+        update for change in changes if (update := change.gen_user_request())
+    ]
+
     return [
         project
         for project in projects
         if ((not project.close_date) or (project.close_date >= start_date))
-    ]
+    ], user_changes
 
 
 class InvalidProjectError(Exception):

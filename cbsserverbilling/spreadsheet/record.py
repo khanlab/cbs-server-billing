@@ -135,16 +135,26 @@ def gen_all_project_records(  # noqa: PLR0913
     end_date: datetime.date,
 ) -> list[SpreadsheetBillableProjectRecord]:
     """Generate a record for each project in the spreadsheets."""
-    projects = gen_all_projects(pi_df, pi_update_df, start_date, end_date)
-    users = enumerate_all_users(user_df, user_update_df, start_date, end_date)
+    projects, user_requests = gen_all_projects(
+        pi_df,
+        pi_update_df,
+        start_date,
+        end_date,
+    )
+    users = enumerate_all_users(
+        user_df,
+        user_update_df,
+        start_date,
+        end_date,
+        additional_requests=user_requests,
+    )
     for project in projects:
-        if project.email == "ymohsenz@uwo.ca":
-            print(project)
         if project.close_date:
             print(project)
             users = AccountUpdate(
                 timestamp=datetime.datetime.combine(
-                    project.close_date, datetime.time(),
+                    project.close_date,
+                    datetime.time(),
                 ),
                 name=project.pi_last_name,
                 email=project.email,
@@ -177,7 +187,7 @@ def check_all_power_users(
     days = get_days_in_range(start_date, end_date)
     all_pi_names = {project.pi_last_name for project in projects}
     for user in users:
-        if user.email == "kgilber7@uwo.ca":
+        if user.email == "mshahba9@uwo.ca":
             print(user)
         if any(
             (

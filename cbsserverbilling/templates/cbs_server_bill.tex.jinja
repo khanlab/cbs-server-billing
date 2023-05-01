@@ -30,7 +30,13 @@ Name & Start Date & End Date & Quantity & Unit Price & Quarter & Amount\\
 {{pi_last_name}} & {{storage.timestamp}} & N/A & {{storage.amount}} TB & \${{storage.price}} & 0.25 & \${{storage.subtotal}}\\
 \bf Power Users\\
 {% for power_user in power_users %}
-{{power_user.last_name}} & {{power_user.start_date}} & {{power_user.end_date}} & 1 Power User & \${{power_user.price}} & 0.25 & \${{power_user.subtotal}}\\
+{% for start_date in power_user["start_date"] %}
+{% if loop.first %}
+{{power_user.last_name}} & {{start_date}} & {{power_user.end_date[loop.index0]}} & 1 Power User & \${{power_user.price}} & 0.25 & \${{power_user.subtotal}}\\
+{% else %}
+ & {{start_date}} & {{power_user.end_date[loop.index0]}} & & & &\\
+{% endif %}
+{% endfor %}
 {% endfor %}
 \midrule
 \bf Subtotal & & & {{power_users|length}} Power Users & & 0.25 & \${{power_users_subtotal}}\\

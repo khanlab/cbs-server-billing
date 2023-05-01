@@ -9,9 +9,10 @@ from cbsserverbilling.billing import generate_all_pi_bills, summarize_all_pi_bil
 from cbsserverbilling.dateutils import get_end_of_period
 from cbsserverbilling.policy import BillingPolicy
 from cbsserverbilling.spreadsheet.io import (
+    load_pi_df,
     load_storage_update_df,
+    load_user_df,
     load_user_update_df,
-    preprocess_forms,
 )
 from cbsserverbilling.spreadsheet.record import gen_all_project_records
 
@@ -54,7 +55,8 @@ def process_everything(  # noqa: PLR0913
     out_dir: PathLike[str] | str,
 ) -> None:
     """Generate all bills and a summary."""
-    pi_df, user_df = preprocess_forms(pi_form, user_form)
+    pi_df = load_pi_df(pi_form)
+    user_df = load_user_df(user_form)
     user_update_df = load_user_update_df(user_update_form)
     pi_update_df = load_storage_update_df(pi_update_form)
 

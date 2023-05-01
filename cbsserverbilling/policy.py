@@ -143,7 +143,7 @@ class BillingPolicy:
         self,
         record: BillableProjectRecord,
         start_date: datetime.date,
-    ) -> list[tuple[User, float]]:
+    ) -> list[tuple[list[User], float]]:
         """Calculate the price each of one billable project's power users in a quarter.
 
         Parameters
@@ -180,9 +180,22 @@ class BillingPolicy:
         price_record = []
         first_price_applied = False
         period_days = get_days_in_range(start_date, end_date)
-        for user in power_users:
-            active_days = {date for date in period_days if user.is_active(date)}
-            power_user_days = {date for date in active_days if user.is_power_user(date)}
+        for terms in sorted(
+            [
+                [user for user in power_users if user.email == email]
+                for email in {user.email for user in power_users}
+            ],
+            key=lambda terms: min(terms, key=lambda user: user.start_date).start_date,
+        ):
+            active_days = {
+                date for date in period_days for term in terms if term.is_active(date)
+            }
+            power_user_days = {
+                date
+                for date in active_days
+                for term in terms
+                if term.is_active(date) and term.is_power_user(date)
+            }
             charge = len(power_user_days) >= min_days
             if not charge:
                 price = 0.0
@@ -191,7 +204,9 @@ class BillingPolicy:
                 first_price_applied = True
             else:
                 price = self.ADDITIONAL_POWER_USER_PRICE * 0.25
-            price_record.append((user, price))
+            price_record.append(
+                (sorted(terms, key=lambda term: term.start_date), price),
+            )
 
         return price_record
 
@@ -284,19 +299,26 @@ class BillingPolicy:
         }
         power_users = [
             {
-                "last_name": user.name,
-                "start_date": user.start_date.strftime("%b %d, %Y"),
-                "end_date": (
+                "last_name": users[0].name,
+                "start_date": [user.start_date.strftime("%b %d, %Y") for user in users],
+                "end_date": [
                     "N/A"
                     if (not user.end_date)
                     else user.end_date.strftime("%b %d, %Y")
-                ),
+                    for user in users
+                ],
                 "price": f"{price * 4:.2f}",
                 "subtotal": f"{price:.2f}",
             }
-            for user, price in self.enumerate_quarterly_power_user_prices(
-                record,
-                quarter_start,
+            for users, price in sorted(
+                self.enumerate_quarterly_power_user_prices(
+                    record,
+                    quarter_start,
+                ),
+                key=lambda tuple_: min(
+                    tuple_[0],
+                    key=lambda user: user.start_date,
+                ).start_date,
             )
         ]
         power_users_subtotal = self.get_quarterly_power_user_price(

@@ -202,6 +202,8 @@ class AccountUpdate:
         if user.is_active(self.timestamp.date()):
             raise UserAlreadyActiveError(user, self)
 
+        print(f"{self}, {user}")
+
         updates = {"end_date": self.end_date} if self.end_date is not None else {}
         pi_name = self.pi_name or user.get_pi_name(
             user.end_date,  # type: ignore[reportGeneralTypeIssues]
@@ -248,6 +250,7 @@ def enumerate_all_users(
     power_user_update_df: pd.DataFrame,
     start_date: datetime.date,
     end_date: datetime.date,
+    additional_requests: Iterable[AccountRequest | AccountUpdate] | None = None,
 ) -> list[UpdateUser]:
     """Generate a list of all users with an active account.
 
@@ -261,6 +264,8 @@ def enumerate_all_users(
         First date to consider.
     end_date
         Last date to consider.
+    additional_requests
+        Requests from outside the user dfs to consider
 
     Returns
     -------
@@ -301,7 +306,10 @@ def enumerate_all_users(
         AccountUpdate.from_pd_tuple(tuple_)
         for tuple_ in update_df.itertuples(name="AccountUpdateTuple")
     ]
-    changes = sorted(requests + updates, key=lambda change: change.timestamp)
+    changes = sorted(
+        requests + updates + (list(additional_requests) if additional_requests else []),
+        key=lambda change: change.timestamp,
+    )
     for change in changes:
         users = change.handle(users)
 

@@ -71,7 +71,7 @@ def summarize_all_pi_bills(
             ],
             "speed_code": [record.get_speed_code(quarter_end) for record in records],
         },
-    ).to_excel(out_file, index=False, engine="openpyxl")
+    ).sort_values(by="pi").to_excel(out_file, index=False, engine="openpyxl")
 
     total_storage = sum(
         policy.get_quarterly_storage_price(record, quarter_start) for record in records
