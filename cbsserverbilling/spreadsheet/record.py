@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import logging
 from collections.abc import Iterable
+from pprint import pp
 
 import pandas as pd
 from attrs import define
@@ -162,6 +163,7 @@ def gen_all_project_records(  # noqa: PLR0913
             ).handle(users)
 
     check_all_power_users(users, projects, start_date, end_date)
+    print_all_power_users(users, start_date, end_date)
 
     used_pis = set()
     records = []
@@ -175,6 +177,13 @@ def gen_all_project_records(  # noqa: PLR0913
         records.append(record)
         used_pis.add(project.pi_last_name)
     return records
+
+
+def print_all_power_users(users: Iterable[User], start_date: datetime.date, end_date: datetime.date):
+    days = get_days_in_range(start_date, end_date)
+    for user in sorted(users, key=lambda user: user.name):
+        if any((user.is_active(date) and user.is_power_user(date)) for date in days):
+            pp(user)
 
 
 def check_all_power_users(
