@@ -1,1 +1,3 @@
+"""Init script."""
+
 pass

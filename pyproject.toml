@@ -1,0 +1,45 @@
+[tool.poetry]
+name = "cbsserverbilling"
+version = "0.1.0"
+description = ""
+authors = ["Tristan Kuehn <tkuehn@uwo.ca>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+pandas = "^1.5.3"
+Jinja2 = "^3.1.2"
+openpyxl = "^3.1.1"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.1.0"
+isort = "^5.12.0"
+pyright = "^1.1.296"
+ruff = "^0.0.263"
+pandas-stubs = "^2.0.0.230412"
+
+[tool.pyright]
+typeCheckingMode = "strict"
+reportInconsistentConstructor = false
+reportMissingParameterType = false
+reportMissingTypeArgument = false
+reportMissingTypeStubs = false
+reportUnnecessaryTypeIgnoreComment = true
+reportUnknownArgumentType = false
+reportUnusedExpression = false
+reportUnknownLambdaType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportUntypedBaseClass = false
+reportUnusedVariable = false
+reportPrivateUsage = false
+
+[tool.ruff]
+select = ["ALL"]
+ignore = ["ANN101", "ANN102", "TCH", "T20"]
+unfixable = ["F841"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
