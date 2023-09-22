@@ -55,6 +55,10 @@ class BillableProjectRecord(metaclass=ABCMeta):
         """Get the project PI's full name."""
 
     @abstractmethod
+    def get_pi_email(self) -> str:
+        """Get the project PI's email."""
+
+    @abstractmethod
     def get_storage_start(self) -> datetime.date:
         """Get the project's storage start date."""
 

@@ -40,6 +40,7 @@ def summarize_all_pi_bills(
     pd.DataFrame(
         {
             "pi": [record.get_pi_last_name() for record in records],
+            "email": [record.get_pi_email() for record in records],
             "storage_amount": [
                 policy.get_quarterly_storage_amount(record, quarter_start)
                 for record in records

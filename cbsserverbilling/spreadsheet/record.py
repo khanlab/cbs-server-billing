@@ -38,6 +38,10 @@ class SpreadsheetBillableProjectRecord(BillableProjectRecord):
         """Get a PI's full name."""
         return self.project.pi_full_name or self.project.pi_last_name
 
+    def get_pi_email(self) -> str:
+        """Get a PI's email."""
+        return self.project.email
+
     def get_storage_start(self) -> datetime.date:
         """Get a PI's storage start date."""
         return self.project.open_date

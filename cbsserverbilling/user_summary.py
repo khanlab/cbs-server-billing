@@ -76,7 +76,7 @@ def count_users(  # noqa: PLR0913
         end_date,
     )
     users = itertools.chain.from_iterable(
-        [record.enumerate_all_users(start_date, end_date) for record in records],
+        [record.enumerate_power_users(start_date, end_date) for record in records],
     )
     pd.DataFrame([{"name": user.name, "email": user.email} for user in users]).to_csv(
         out_path, index=False,
