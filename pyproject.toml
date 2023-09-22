@@ -18,6 +18,9 @@ pyright = "^1.1.296"
 ruff = "^0.0.263"
 pandas-stubs = "^2.0.0.230412"
 
+[tool.poetry.scripts]
+cbsserverbilling = 'cbsserverbilling.main:main'
+
 [tool.pyright]
 typeCheckingMode = "strict"
 reportInconsistentConstructor = false
