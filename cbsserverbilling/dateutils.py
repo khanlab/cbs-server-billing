@@ -1,5 +1,7 @@
 """Utilities for handling datetimes."""
 
+from __future__ import annotations
+
 import calendar
 import datetime
 
