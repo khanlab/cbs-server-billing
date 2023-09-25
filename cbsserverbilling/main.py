@@ -1,5 +1,7 @@
 """Run the billing script."""
 
+from __future__ import annotations
+
 import argparse
 import datetime
 from os import PathLike

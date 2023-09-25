@@ -5,7 +5,11 @@ import datetime
 import os
 from collections.abc import Iterable
 from pathlib import Path
-from zoneinfo import ZoneInfo
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 import pandas as pd
 from jinja2 import Environment, PackageLoader
