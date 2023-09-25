@@ -1,4 +1,8 @@
-"""Interface for getting raw CBS Server usage information."""
+"""Interface for getting raw CBS Server usage information.
+
+This module defines a couple of abstract base classes that form the interface for
+accessing stored data about CBS Server usage.
+"""
 
 from __future__ import annotations
 

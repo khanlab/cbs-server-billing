@@ -20,27 +20,31 @@ from cbsserverbilling.spreadsheet.record import gen_all_project_records
 def gen_parser() -> argparse.ArgumentParser:
     """Generate a command-line parser."""
     parser = argparse.ArgumentParser(description="Process CBS Server billing data.")
-    parser.add_argument("pi_form", type=str, help="path to the PI form data")
+    parser.add_argument(
+        "pi_form", type=str, help="Path to the PI account request form data",
+    )
     parser.add_argument(
         "pi_update_form",
         type=str,
-        help="path to the storage update form data",
+        help="Path to the PI/storage update form data",
     )
-    parser.add_argument("user_form", type=str, help="path to the user form data")
+    parser.add_argument(
+        "user_form", type=str, help="Path to the user account request form data",
+    )
     parser.add_argument(
         "user_update_form",
         type=str,
-        help="path to the user update form data",
+        help="Path to the user update form data",
     )
     parser.add_argument(
         "quarter_start",
         type=str,
-        help="first day of the quarter to bill",
+        help="First day of the quarter to bill",
     )
     parser.add_argument(
         "out_dir",
         type=str,
-        help="directory into which to output bill files",
+        help="Directory into which to output bill files",
     )
 
     return parser

@@ -24,7 +24,11 @@ TIME_ZONE = ZoneInfo("America/Toronto")
 
 
 class BillingPolicy:
-    """Class containing all billing policy information."""
+    """Class containing all billing policy information.
+
+    Specifically, this uses the raw information represented by BillableProjectRecords
+    and uses it to generate bill TeX files from a template.
+    """
 
     STORAGE_PRICE = 50
     FIRST_POWER_USER_PRICE = 1000
