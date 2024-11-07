@@ -33,8 +33,9 @@ def load_user_df(user_form_path: os.PathLike[str] | str) -> pd.DataFrame:
             "Do you need your account to be a Power User account": "power_user",
         },
     )
+    user_df = user_df.map(lambda x: x.strip().lower() if isinstance(x, str) else x)
     user_df = user_df.assign(
-        power_user=user_df["power_user"].str.strip().str.lower() == "yes",
+        power_user=user_df["power_user"] == "yes",
     )
     return user_df
 
@@ -68,10 +69,11 @@ def load_user_update_df(user_update_form_path: os.PathLike[str] | str) -> pd.Dat
             "Please feel free to leave any feedback": "feedback",
         },
     )
+    user_update_df = user_update_df.map(lambda x: x.strip().lower() if isinstance(x, str) else x)
     user_update_df = user_update_df.assign(
-        agree=user_update_df["agree"].str.strip().str.lower() == "yes",
+        agree=user_update_df["agree"] == "yes",
         new_power_user=user_update_df["new_power_user"].map(
-            lambda x: None if pd.isna(x) else x.strip().lower() == "power user",
+            lambda x: None if pd.isna(x) else x == "power user",
         ),
     )
     return user_update_df
@@ -99,8 +101,9 @@ def load_pi_df(pi_form_path: os.PathLike[str] | str) -> pd.DataFrame:
             "Required storage needs (in TB)": "storage",
         },
     )
+    pi_df = pi_df.map(lambda x: x.strip().lower() if isinstance(x, str) else x)
     pi_df = pi_df.assign(
-        pi_is_power_user=pi_df["pi_is_power_user"].str.strip().str.lower() == "yes",
+        pi_is_power_user=pi_df["pi_is_power_user"] == "yes",
     )
     return pi_df
 
@@ -135,9 +138,9 @@ def load_storage_update_df(
             "Account closure2": "account_closed",
         },
     )
+    storage_update_df = storage_update_df.map(lambda x: x.strip().lower() if isinstance(x, str) else x)
     storage_update_df = storage_update_df.assign(
-        agree=storage_update_df["agree"].str.strip().str.lower() == "yes",
-        account_closed=storage_update_df["account_closed"].str.strip().str.lower()
-        == "yes",
+        agree=storage_update_df["agree"] == "yes",
+        account_closed=storage_update_df["account_closed"] == "yes",
     )
     return storage_update_df
