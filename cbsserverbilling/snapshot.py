@@ -63,11 +63,18 @@ def build_users_snapshot(
             continue
         try:
             pi_name = user.get_pi_name(quarter_end)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "Could not get pi_name for %s on %s: %s", user.email, quarter_end, exc,
+            )
             pi_name = None
         try:
             is_power_user = user.is_power_user(quarter_end)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "Could not get is_power_user for %s on %s: %s",
+                user.email, quarter_end, exc,
+            )
             is_power_user = None
         rows.append(
             {
@@ -112,11 +119,19 @@ def build_projects_snapshot(
             continue
         try:
             storage_tb = project.get_storage(quarter_end)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "Could not get storage for %s on %s: %s",
+                project.email, quarter_end, exc,
+            )
             storage_tb = None
         try:
             speed_code = project.get_speed_code(quarter_end)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "Could not get speed_code for %s on %s: %s",
+                project.email, quarter_end, exc,
+            )
             speed_code = None
         rows.append(
             {

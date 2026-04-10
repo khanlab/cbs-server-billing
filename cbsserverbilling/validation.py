@@ -21,6 +21,10 @@ import pandas as pd
 # Exceptions
 # ---------------------------------------------------------------------------
 
+# Basic email sanity check: requires <local>@<domain>.<tld>.  Does not
+# enforce RFC-5321 details (valid TLDs, hyphen rules, etc.) - the goal is
+# to catch obviously missing or blank email addresses, not to act as a
+# full RFC validator.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 QUARANTINE_COL = "_quarantine_errors"

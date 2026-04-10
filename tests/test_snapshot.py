@@ -133,7 +133,7 @@ class TestBuildUsersSnapshot:
     def test_power_user_flag(self):
         user = _make_user("a@example.com", "Apple", datetime.date(2020, 1, 1), None, "Smith", True)
         df = build_users_snapshot([user], QUARTER_END)
-        assert df.iloc[0]["is_power_user"] == True  # noqa: E712
+        assert df.iloc[0]["is_power_user"]
 
 
 # ---------------------------------------------------------------------------
