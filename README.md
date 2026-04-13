@@ -50,6 +50,12 @@ Each input sheet is validated after loading.  Row-level checks include:
 - **Speed codes** — must be a non-empty string.
 - **Required string fields** (`last_name`, `pi_last_name`, etc.) — must be non-empty.
 
+Cross-table reference checks are also applied after all sheets are loaded:
+
+- **storage_update `last_name`** — must match a `last_name` in the PI form; otherwise the update has no target project and would cause a crash (`InvalidPiUpdateError`).
+- **user_update `email`** — must match an `email` in the user form; otherwise the update has no target user and would cause a crash (`InapplicableUpdateError`).
+- **power user `pi_last_name`** — power users must have a `pi_last_name` that matches a `last_name` in the PI form; otherwise billing would raise `UnattachedUserError`.
+
 Any row that fails one or more checks is **quarantined**: it is removed from the pipeline and written to `quarantine_<sheet_name>.csv` alongside the other outputs.  Each quarantined row includes a `_quarantine_errors` column that lists every check that failed, with the Excel row number for easy cross-referencing.
 
 **Missing required columns** (e.g. if a spreadsheet export is missing an expected header) are a hard failure: the run is aborted immediately with a `ColumnError` message that lists the missing column names.

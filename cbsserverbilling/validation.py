@@ -124,6 +124,7 @@ def _validate_row(
         Each entry is ``(column_name, predicate, message_suffix)``.
         The full error message will be:
         ``"column '<col>': <message_suffix> (Excel row <n>)"``.
+
     """
     errors: RowErrors = []
     for col, check, msg in checks:
@@ -171,6 +172,7 @@ def validate_user_df(
     ------
     ColumnError
         If a required column is missing entirely.
+
     """
     _require_columns(df, _USER_DF_REQUIRED, "user_form")
 
@@ -198,6 +200,7 @@ def validate_user_update_df(
     Returns
     -------
     tuple[DataFrame, DataFrame]
+
     """
     _require_columns(df, _USER_UPDATE_DF_REQUIRED, "user_update_form")
 
@@ -222,6 +225,7 @@ def validate_pi_df(
     Returns
     -------
     tuple[DataFrame, DataFrame]
+
     """
     _require_columns(df, _PI_DF_REQUIRED, "pi_form")
 
@@ -250,6 +254,7 @@ def validate_storage_update_df(
     Returns
     -------
     tuple[DataFrame, DataFrame]
+
     """
     _require_columns(df, _STORAGE_UPDATE_DF_REQUIRED, "storage_update_form")
 
@@ -297,6 +302,185 @@ def _split_valid_quarantine(
 
     valid_df = df.loc[~is_invalid].copy()
     quarantine_df = df.loc[is_invalid].copy()
+    quarantine_df[QUARANTINE_COL] = error_series.loc[is_invalid]
+
+    return valid_df.reset_index(drop=True), quarantine_df.reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Cross-table reference validation
+# ---------------------------------------------------------------------------
+
+
+def validate_pi_update_refs(
+    pi_update_df: pd.DataFrame,
+    pi_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Quarantine storage-update rows whose PI last name has no match in pi_df.
+
+    An unmatched ``last_name`` in the storage-update sheet would cause an
+    :class:`~cbsserverbilling.spreadsheet.project.InvalidPiUpdateError` during
+    model construction.  Quarantining those rows here prevents the crash.
+
+    Parameters
+    ----------
+    pi_update_df
+        Validated storage-update DataFrame (post-rename, post-row validation).
+    pi_df
+        Validated PI DataFrame (post-rename, post-row validation).
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)``
+
+    """
+    if pi_update_df.empty or "last_name" not in pi_update_df.columns:
+        return pi_update_df.copy(), pd.DataFrame(
+            columns=[*pi_update_df.columns, QUARANTINE_COL],
+        )
+
+    known_pi_names: set[str] = set(
+        pi_df["last_name"].dropna() if "last_name" in pi_df.columns else [],
+    )
+
+    error_lists: list[str] = []
+    for _, row in pi_update_df.iterrows():
+        name = row.get("last_name", "")
+        name_str = name.strip() if isinstance(name, str) else ""
+        if name_str and name_str not in known_pi_names:
+            error_lists.append(
+                f"column 'last_name': '{name}' does not match any PI last name "
+                f"in pi_form (Excel row {_excel_row(row.name)})",
+            )
+        else:
+            error_lists.append("")
+
+    error_series = pd.Series(error_lists, index=pi_update_df.index)
+    is_invalid = error_series.str.len() > 0
+
+    valid_df = pi_update_df.loc[~is_invalid].copy()
+    quarantine_df = pi_update_df.loc[is_invalid].copy()
+    quarantine_df[QUARANTINE_COL] = error_series.loc[is_invalid]
+
+    return valid_df.reset_index(drop=True), quarantine_df.reset_index(drop=True)
+
+
+def validate_user_update_refs(
+    user_update_df: pd.DataFrame,
+    user_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Quarantine user-update rows whose email has no match in user_df.
+
+    An unmatched ``email`` in the user-update sheet would cause an
+    :class:`~cbsserverbilling.spreadsheet.user.InapplicableUpdateError` during
+    model construction.  Quarantining those rows here prevents the crash.
+
+    Parameters
+    ----------
+    user_update_df
+        Validated user-update DataFrame (post-rename, post-row validation).
+    user_df
+        Validated user DataFrame (post-rename, post-row validation).
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)``
+
+    """
+    if user_update_df.empty or "email" not in user_update_df.columns:
+        return user_update_df.copy(), pd.DataFrame(
+            columns=[*user_update_df.columns, QUARANTINE_COL],
+        )
+
+    known_emails: set[str] = set(
+        user_df["email"].dropna() if "email" in user_df.columns else [],
+    )
+
+    error_lists: list[str] = []
+    for _, row in user_update_df.iterrows():
+        email = row.get("email", "")
+        email_str = email.strip() if isinstance(email, str) else ""
+        if email_str and email_str not in known_emails:
+            error_lists.append(
+                f"column 'email': '{email}' does not match any user email "
+                f"in user_form (Excel row {_excel_row(row.name)})",
+            )
+        else:
+            error_lists.append("")
+
+    error_series = pd.Series(error_lists, index=user_update_df.index)
+    is_invalid = error_series.str.len() > 0
+
+    valid_df = user_update_df.loc[~is_invalid].copy()
+    quarantine_df = user_update_df.loc[is_invalid].copy()
+    quarantine_df[QUARANTINE_COL] = error_series.loc[is_invalid]
+
+    return valid_df.reset_index(drop=True), quarantine_df.reset_index(drop=True)
+
+
+def validate_power_user_pi_refs(
+    user_df: pd.DataFrame,
+    pi_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Quarantine power-user rows whose pi_last_name has no match in pi_df.
+
+    A power user whose ``pi_last_name`` does not correspond to any project
+    would cause an
+    :class:`~cbsserverbilling.spreadsheet.record.UnattachedUserError` when
+    billing.  Quarantining those rows here prevents the crash.
+
+    Non-power-users are not checked; their PI association is not required
+    for billing.
+
+    Parameters
+    ----------
+    user_df
+        Validated user DataFrame (post-rename, post-row validation).
+    pi_df
+        Validated PI DataFrame (post-rename, post-row validation).
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)``
+
+    """
+    if (
+        user_df.empty
+        or "power_user" not in user_df.columns
+        or "pi_last_name" not in user_df.columns
+    ):
+        return user_df.copy(), pd.DataFrame(
+            columns=[*user_df.columns, QUARANTINE_COL],
+        )
+
+    known_pi_names: set[str] = set(
+        pi_df["last_name"].dropna() if "last_name" in pi_df.columns else [],
+    )
+
+    error_lists: list[str] = []
+    for _, row in user_df.iterrows():
+        is_power_user = row.get("power_user")
+        # Only check rows where power_user is truthy
+        if is_power_user:
+            pi_name = row.get("pi_last_name", "")
+            if isinstance(pi_name, str) and pi_name.strip() not in known_pi_names:
+                error_lists.append(
+                    f"column 'pi_last_name': power user's PI '{pi_name}' does not "
+                    f"match any PI in pi_form (Excel row {_excel_row(row.name)})",
+                )
+            else:
+                error_lists.append("")
+        else:
+            error_lists.append("")
+
+    error_series = pd.Series(error_lists, index=user_df.index)
+    is_invalid = error_series.str.len() > 0
+
+    valid_df = user_df.loc[~is_invalid].copy()
+    quarantine_df = user_df.loc[is_invalid].copy()
     quarantine_df[QUARANTINE_COL] = error_series.loc[is_invalid]
 
     return valid_df.reset_index(drop=True), quarantine_df.reset_index(drop=True)

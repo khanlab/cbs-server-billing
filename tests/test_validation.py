@@ -11,9 +11,12 @@ from cbsserverbilling.validation import (
     QUARANTINE_COL,
     ColumnError,
     validate_pi_df,
+    validate_pi_update_refs,
+    validate_power_user_pi_refs,
     validate_storage_update_df,
     validate_user_df,
     validate_user_update_df,
+    validate_user_update_refs,
 )
 
 # ---------------------------------------------------------------------------
@@ -339,3 +342,218 @@ def test_date_object_in_timestamp_column_is_valid():
     valid, quarantine = validate_user_df(df)
     assert len(valid) == 1
     assert quarantine.empty
+
+
+# ---------------------------------------------------------------------------
+# Cross-table: validate_pi_update_refs
+# ---------------------------------------------------------------------------
+
+
+class TestValidatePiUpdateRefs:
+    """Tests for validate_pi_update_refs (storage_update vs pi_df)."""
+
+    def _pi_df(self, last_names: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({"last_name": last_names})
+
+    def _update_df(self, last_names: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({
+            "last_name": last_names,
+            "timestamp": [pd.Timestamp("2021-01-01")] * len(last_names),
+            "email": ["pi@example.com"] * len(last_names),
+        })
+
+    def test_matching_name_passes(self):
+        update_df = self._update_df(["smith"])
+        pi_df = self._pi_df(["smith", "jones"])
+        valid, quarantine = validate_pi_update_refs(update_df, pi_df)
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_unmatched_name_quarantined(self):
+        """Storage-update rows referencing unknown PI last names must be quarantined."""
+        update_df = self._update_df(["ghost"])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_pi_update_refs(update_df, pi_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+        assert "last_name" in quarantine.iloc[0][QUARANTINE_COL]
+        assert "ghost" in quarantine.iloc[0][QUARANTINE_COL]
+
+    def test_mixed_rows(self):
+        update_df = self._update_df(["smith", "ghost", "jones"])
+        pi_df = self._pi_df(["smith", "jones"])
+        valid, quarantine = validate_pi_update_refs(update_df, pi_df)
+        assert len(valid) == 2
+        assert len(quarantine) == 1
+
+    def test_empty_update_df_passes(self):
+        update_df = pd.DataFrame(columns=["last_name", "timestamp", "email"])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_pi_update_refs(update_df, pi_df)
+        assert valid.empty
+        assert quarantine.empty
+
+    def test_empty_pi_df_quarantines_all(self):
+        """If no PIs exist, every storage-update row is an orphan."""
+        update_df = self._update_df(["smith"])
+        pi_df = pd.DataFrame(columns=["last_name"])
+        valid, quarantine = validate_pi_update_refs(update_df, pi_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+
+    def test_error_message_contains_excel_row(self):
+        update_df = self._update_df(["smith", "ghost"])
+        pi_df = self._pi_df(["smith"])
+        _, quarantine = validate_pi_update_refs(update_df, pi_df)
+        # "ghost" is at pandas index 1 → Excel row 3
+        assert "Excel row 3" in quarantine.iloc[0][QUARANTINE_COL]
+
+
+# ---------------------------------------------------------------------------
+# Cross-table: validate_user_update_refs
+# ---------------------------------------------------------------------------
+
+
+class TestValidateUserUpdateRefs:
+    """Tests for validate_user_update_refs (user_update vs user_df)."""
+
+    def _user_df(self, emails: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({"email": emails})
+
+    def _update_df(self, emails: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({
+            "email": emails,
+            "timestamp": [pd.Timestamp("2021-06-01")] * len(emails),
+            "last_name": ["Apple"] * len(emails),
+        })
+
+    def test_matching_email_passes(self):
+        update_df = self._update_df(["alice@example.com"])
+        user_df = self._user_df(["alice@example.com", "bob@example.com"])
+        valid, quarantine = validate_user_update_refs(update_df, user_df)
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_unmatched_email_quarantined(self):
+        """User-update rows referencing unknown emails must be quarantined."""
+        update_df = self._update_df(["ghost@example.com"])
+        user_df = self._user_df(["alice@example.com"])
+        valid, quarantine = validate_user_update_refs(update_df, user_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+        assert "email" in quarantine.iloc[0][QUARANTINE_COL]
+        assert "ghost@example.com" in quarantine.iloc[0][QUARANTINE_COL]
+
+    def test_mixed_rows(self):
+        update_df = self._update_df([
+            "alice@example.com", "ghost@example.com", "bob@example.com",
+        ])
+        user_df = self._user_df(["alice@example.com", "bob@example.com"])
+        valid, quarantine = validate_user_update_refs(update_df, user_df)
+        assert len(valid) == 2
+        assert len(quarantine) == 1
+
+    def test_empty_update_df_passes(self):
+        update_df = pd.DataFrame(columns=["email", "timestamp", "last_name"])
+        user_df = self._user_df(["alice@example.com"])
+        valid, quarantine = validate_user_update_refs(update_df, user_df)
+        assert valid.empty
+        assert quarantine.empty
+
+    def test_empty_user_df_quarantines_all(self):
+        """If no users exist, every user-update row is an orphan."""
+        update_df = self._update_df(["alice@example.com"])
+        user_df = pd.DataFrame(columns=["email"])
+        valid, quarantine = validate_user_update_refs(update_df, user_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+
+    def test_error_message_contains_excel_row(self):
+        update_df = self._update_df(["alice@example.com", "ghost@example.com"])
+        user_df = self._user_df(["alice@example.com"])
+        _, quarantine = validate_user_update_refs(update_df, user_df)
+        assert "Excel row 3" in quarantine.iloc[0][QUARANTINE_COL]
+
+
+# ---------------------------------------------------------------------------
+# Cross-table: validate_power_user_pi_refs
+# ---------------------------------------------------------------------------
+
+
+class TestValidatePowerUserPiRefs:
+    """Tests for validate_power_user_pi_refs (power users vs pi_df)."""
+
+    def _pi_df(self, last_names: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({"last_name": last_names})
+
+    def _user_df(
+        self, emails: list[str], pi_names: list[str], power_flags: list[bool],
+    ) -> pd.DataFrame:
+        return pd.DataFrame({
+            "email": emails,
+            "pi_last_name": pi_names,
+            "power_user": power_flags,
+            "last_name": ["Apple"] * len(emails),
+            "start_timestamp": [pd.Timestamp("2021-01-01")] * len(emails),
+        })
+
+    def test_power_user_with_valid_pi_passes(self):
+        user_df = self._user_df(["a@example.com"], ["smith"], [True])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_non_power_user_with_unknown_pi_passes(self):
+        """Non-power users don't need a valid PI in pi_form."""
+        user_df = self._user_df(["a@example.com"], ["unknown_pi"], [False])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_power_user_with_unknown_pi_quarantined(self):
+        """Power users whose PI is not in pi_form must be quarantined."""
+        user_df = self._user_df(["a@example.com"], ["ghost_pi"], [True])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+        assert "pi_last_name" in quarantine.iloc[0][QUARANTINE_COL]
+        assert "ghost_pi" in quarantine.iloc[0][QUARANTINE_COL]
+
+    def test_mixed_power_and_non_power_users(self):
+        user_df = self._user_df(
+            ["a@example.com", "b@example.com", "c@example.com"],
+            ["smith", "ghost_pi", "jones"],
+            [True, True, False],
+        )
+        pi_df = self._pi_df(["smith", "jones"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        # "b" is power user with unknown PI -> quarantined
+        # "c" is non-power user with "jones" (even though jones is in pi_df, doesn't matter)
+        assert len(valid) == 2
+        assert len(quarantine) == 1
+
+    def test_empty_user_df_passes(self):
+        user_df = pd.DataFrame(
+            columns=["email", "pi_last_name", "power_user", "last_name"],
+        )
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        assert valid.empty
+        assert quarantine.empty
+
+    def test_empty_pi_df_quarantines_power_users(self):
+        """With no PIs at all, any power user row must be quarantined."""
+        user_df = self._user_df(
+            ["a@example.com", "b@example.com"],
+            ["smith", "jones"],
+            [True, False],
+        )
+        pi_df = pd.DataFrame(columns=["last_name"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        # Only the power user (row 0) is quarantined
+        assert len(valid) == 1
+        assert len(quarantine) == 1
+
