@@ -16,6 +16,7 @@ from cbsserverbilling.validation import (
     validate_storage_update_df,
     validate_user_df,
     validate_user_update_df,
+    validate_user_update_pi_refs,
     validate_user_update_refs,
 )
 
@@ -556,4 +557,121 @@ class TestValidatePowerUserPiRefs:
         # Only the power user (row 0) is quarantined
         assert len(valid) == 1
         assert len(quarantine) == 1
+
+    def test_string_false_power_user_not_quarantined(self):
+        """power_user='False' (string) must NOT be treated as a power user."""
+        # When Excel data has string booleans, "False" must be treated as False.
+        user_df = self._user_df(["a@example.com"], ["ghost_pi"], [False])
+        # Use string "False" to simulate real spreadsheet data
+        user_df["power_user"] = "False"
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        # Non-power user with unknown PI must NOT be quarantined
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_string_true_power_user_quarantined_if_pi_missing(self):
+        """power_user='True' (string) must be treated as a power user."""
+        user_df = self._user_df(["a@example.com"], ["ghost_pi"], [True])
+        user_df["power_user"] = "True"
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_power_user_pi_refs(user_df, pi_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+
+
+# ---------------------------------------------------------------------------
+# Cross-table: validate_user_update_pi_refs
+# ---------------------------------------------------------------------------
+
+
+class TestValidateUserUpdatePiRefs:
+    """Tests for validate_user_update_pi_refs (pi_last_name in user_update vs pi_df).
+
+    This validator catches the case where a user-update row changes a user's PI
+    to a non-existent one, which would otherwise cause UnattachedUserError when
+    that user is (or becomes) a power user during billing.
+    """
+
+    def _pi_df(self, last_names: list[str]) -> pd.DataFrame:
+        return pd.DataFrame({"last_name": last_names})
+
+    def _update_df(
+        self, pi_names: list[str | None],
+    ) -> pd.DataFrame:
+        return pd.DataFrame({
+            "email": ["alice@example.com"] * len(pi_names),
+            "last_name": ["Apple"] * len(pi_names),
+            "timestamp": [pd.Timestamp("2022-01-01")] * len(pi_names),
+            "pi_last_name": pi_names,
+        })
+
+    def test_valid_pi_passes(self):
+        update_df = self._update_df(["smith"])
+        pi_df = self._pi_df(["smith", "jones"])
+        valid, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_na_pi_passes(self):
+        """Rows with NA pi_last_name must pass (they don't change the PI)."""
+        update_df = self._update_df([None])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_unknown_pi_quarantined(self):
+        """Update rows that set pi_last_name to a non-existent PI must be quarantined."""
+        update_df = self._update_df(["ghost_pi"])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+        assert "pi_last_name" in quarantine.iloc[0][QUARANTINE_COL]
+        assert "ghost_pi" in quarantine.iloc[0][QUARANTINE_COL]
+
+    def test_mixed_valid_and_na_and_invalid(self):
+        update_df = self._update_df(["smith", None, "ghost_pi"])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        assert len(valid) == 2
+        assert len(quarantine) == 1
+
+    def test_column_missing_returns_unchanged(self):
+        """If the pi_last_name column is absent, the df is returned unchanged."""
+        update_df = pd.DataFrame({
+            "email": ["a@example.com"],
+            "timestamp": [pd.Timestamp("2022-01-01")],
+        })
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        assert len(valid) == 1
+        assert quarantine.empty
+
+    def test_empty_string_pi_quarantined(self):
+        """Rows with an empty (but non-NA) pi_last_name must be quarantined."""
+        update_df = self._update_df([""])
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        assert valid.empty
+        assert len(quarantine) == 1
+        assert "pi_last_name" in quarantine.iloc[0][QUARANTINE_COL]
+
+    def test_empty_update_df_passes(self):
+        update_df = pd.DataFrame(
+            columns=["email", "timestamp", "last_name", "pi_last_name"],
+        )
+        pi_df = self._pi_df(["smith"])
+        valid, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        assert valid.empty
+        assert quarantine.empty
+
+    def test_error_message_contains_excel_row(self):
+        update_df = self._update_df(["smith", "ghost_pi"])
+        pi_df = self._pi_df(["smith"])
+        _, quarantine = validate_user_update_pi_refs(update_df, pi_df)
+        # "ghost_pi" is at pandas index 1 → Excel row 3
+        assert "Excel row 3" in quarantine.iloc[0][QUARANTINE_COL]
+
 

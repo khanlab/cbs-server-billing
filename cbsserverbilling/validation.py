@@ -102,6 +102,29 @@ def _is_bool_like(value: object) -> bool:
     )
 
 
+def _coerce_bool(value: object) -> bool:
+    """Return the boolean meaning of a bool-like value.
+
+    Understands Python booleans, integers, and the strings ``"true"``/
+    ``"false"``/``"yes"``/``"no"``/``"1"``/``"0"`` (case-insensitive).
+    Returns ``False`` for anything else (including ``None``, ``NaN``, or
+    non-bool-like strings).
+
+    Note: this function is intentionally lenient because it is only called
+    on values that have already been validated by :func:`_is_bool_like`.
+    Any value that reaches this function with an unexpected type is safely
+    treated as ``False`` rather than raising, because the upstream per-sheet
+    validator is responsible for catching non-bool-like values.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "1"}
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Row validator factories
 # ---------------------------------------------------------------------------
@@ -462,7 +485,7 @@ def validate_power_user_pi_refs(
 
     error_lists: list[str] = []
     for _, row in user_df.iterrows():
-        is_power_user = row.get("power_user")
+        is_power_user = _coerce_bool(row.get("power_user"))
         # Only check rows where power_user is truthy
         if is_power_user:
             pi_name = row.get("pi_last_name", "")
@@ -481,6 +504,76 @@ def validate_power_user_pi_refs(
 
     valid_df = user_df.loc[~is_invalid].copy()
     quarantine_df = user_df.loc[is_invalid].copy()
+    quarantine_df[QUARANTINE_COL] = error_series.loc[is_invalid]
+
+    return valid_df.reset_index(drop=True), quarantine_df.reset_index(drop=True)
+
+
+def validate_user_update_pi_refs(
+    user_update_df: pd.DataFrame,
+    pi_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Quarantine user-update rows that set ``pi_last_name`` to a non-existent PI.
+
+    When a user-update row provides a non-null ``pi_last_name`` that does not
+    correspond to any PI in ``pi_form``, applying that update would give the
+    user an invalid PI association.  If the user is (or becomes) a power user
+    this causes an
+    :class:`~cbsserverbilling.spreadsheet.record.UnattachedUserError` at
+    billing time.  Quarantining those rows here prevents the crash.
+
+    Rows where ``pi_last_name`` is absent or ``NA`` are not checked, because
+    a ``None`` value in an update means "do not change the PI".
+
+    Parameters
+    ----------
+    user_update_df
+        Validated user-update DataFrame (post-rename, post-row validation,
+        post email-reference validation).
+    pi_df
+        Validated PI DataFrame (post-rename, post-row validation).
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)``
+
+    """
+    if user_update_df.empty or "pi_last_name" not in user_update_df.columns:
+        return user_update_df.copy(), pd.DataFrame(
+            columns=[*user_update_df.columns, QUARANTINE_COL],
+        )
+
+    known_pi_names: set[str] = set(
+        pi_df["last_name"].dropna() if "last_name" in pi_df.columns else [],
+    )
+
+    error_lists: list[str] = []
+    for _, row in user_update_df.iterrows():
+        pi_name = row.get("pi_last_name")
+        # Only validate rows that actually set a new PI (non-NA value)
+        if pd.isna(pi_name):
+            error_lists.append("")
+        else:
+            pi_str = str(pi_name).strip()
+            if not pi_str:
+                error_lists.append(
+                    f"column 'pi_last_name': must not be empty or whitespace-only "
+                    f"(Excel row {_excel_row(row.name)})",
+                )
+            elif pi_str not in known_pi_names:
+                error_lists.append(
+                    f"column 'pi_last_name': '{pi_name}' does not match any PI "
+                    f"in pi_form (Excel row {_excel_row(row.name)})",
+                )
+            else:
+                error_lists.append("")
+
+    error_series = pd.Series(error_lists, index=user_update_df.index)
+    is_invalid = error_series.str.len() > 0
+
+    valid_df = user_update_df.loc[~is_invalid].copy()
+    quarantine_df = user_update_df.loc[is_invalid].copy()
     quarantine_df[QUARANTINE_COL] = error_series.loc[is_invalid]
 
     return valid_df.reset_index(drop=True), quarantine_df.reset_index(drop=True)

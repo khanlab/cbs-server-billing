@@ -27,6 +27,7 @@ from cbsserverbilling.validation import (
     QUARANTINE_COL,
     validate_pi_update_refs,
     validate_power_user_pi_refs,
+    validate_user_update_pi_refs,
     validate_user_update_refs,
 )
 
@@ -134,13 +135,21 @@ def process_everything(  # noqa: PLR0913
     user_update_df, user_update_ref_quarantine = validate_user_update_refs(
         user_update_df, user_df,
     )
+    # Quarantine update rows that set pi_last_name to a PI not in pi_form —
+    # this prevents UnattachedUserError when a power user's PI is updated to
+    # a non-existent value.
+    user_update_df, user_update_pi_quarantine = validate_user_update_pi_refs(
+        user_update_df, pi_df,
+    )
     user_df, user_pi_ref_quarantine = validate_power_user_pi_refs(user_df, pi_df)
 
     quarantine_dfs = {
         "pi_form": pi_quarantine,
         "user_form": _concat_quarantines(user_quarantine, user_pi_ref_quarantine),
         "user_update_form": _concat_quarantines(
-            user_update_quarantine, user_update_ref_quarantine,
+            user_update_quarantine,
+            user_update_ref_quarantine,
+            user_update_pi_quarantine,
         ),
         "storage_update_form": _concat_quarantines(
             pi_update_quarantine, pi_update_ref_quarantine,
