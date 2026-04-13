@@ -6,6 +6,13 @@ import os
 
 import pandas as pd
 
+from cbsserverbilling.validation import (
+    validate_pi_df,
+    validate_storage_update_df,
+    validate_user_df,
+    validate_user_update_df,
+)
+
 
 def load_user_df(user_form_path: os.PathLike[str] | str) -> pd.DataFrame:
     """Load user Google Forms data into a usable pandas dataframe.
@@ -69,7 +76,9 @@ def load_user_update_df(user_update_form_path: os.PathLike[str] | str) -> pd.Dat
             "Please feel free to leave any feedback": "feedback",
         },
     )
-    user_update_df = user_update_df.map(lambda x: x.strip().lower() if isinstance(x, str) else x)
+    user_update_df = user_update_df.map(
+        lambda x: x.strip().lower() if isinstance(x, str) else x,
+    )
     user_update_df = user_update_df.assign(
         agree=user_update_df["agree"] == "yes",
         new_power_user=user_update_df["new_power_user"].map(
@@ -138,9 +147,92 @@ def load_storage_update_df(
             "Account closure2": "account_closed",
         },
     )
-    storage_update_df = storage_update_df.map(lambda x: x.strip().lower() if isinstance(x, str) else x)
+    storage_update_df = storage_update_df.map(
+        lambda x: x.strip().lower() if isinstance(x, str) else x,
+    )
     storage_update_df = storage_update_df.assign(
         agree=storage_update_df["agree"] == "yes",
         account_closed=storage_update_df["account_closed"] == "yes",
     )
     return storage_update_df
+
+# ---------------------------------------------------------------------------
+# Ingestion helpers: load + validate + quarantine
+# ---------------------------------------------------------------------------
+
+
+def ingest_user_df(
+    user_form_path: os.PathLike[str] | str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load and validate user form data, returning valid and quarantine rows.
+
+    Parameters
+    ----------
+    user_form_path
+        Path to the Excel sheet containing CBS server user data.
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)`` -- *quarantine_df* contains invalid rows
+        plus a ``_quarantine_errors`` column describing what failed.
+    """
+    raw_df = load_user_df(user_form_path)
+    return validate_user_df(raw_df)
+
+
+def ingest_user_update_df(
+    user_update_form_path: os.PathLike[str] | str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load and validate user-update form data.
+
+    Parameters
+    ----------
+    user_update_form_path
+        Path to the user update form.
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)``
+    """
+    raw_df = load_user_update_df(user_update_form_path)
+    return validate_user_update_df(raw_df)
+
+
+def ingest_pi_df(
+    pi_form_path: os.PathLike[str] | str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load and validate PI form data.
+
+    Parameters
+    ----------
+    pi_form_path
+        Path to the PI form.
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)``
+    """
+    raw_df = load_pi_df(pi_form_path)
+    return validate_pi_df(raw_df)
+
+
+def ingest_storage_update_df(
+    storage_update_form_path: os.PathLike[str] | str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load and validate storage-update form data.
+
+    Parameters
+    ----------
+    storage_update_form_path
+        Path to the storage update form.
+
+    Returns
+    -------
+    tuple[DataFrame, DataFrame]
+        ``(valid_df, quarantine_df)``
+    """
+    raw_df = load_storage_update_df(storage_update_form_path)
+    return validate_storage_update_df(raw_df)
